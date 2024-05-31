@@ -1,0 +1,6 @@
+pairtree
+fasttext
+demarc @ git+https://github.com/comp-int-hum/demarc.git@7a75118bcff00b72343f06655569c62d31ee2bd5
+steamroller @ git+https://github.com/TomLippincott/steamroller.git@849347711d1c503490f9d779c09baf9c06873dc8
+fasttext @ git+https://github.com/facebookresearch/fastText.git@1142dc4c4ecbc19cc16eee5cdd28472e689267e6
+huggingface_hub

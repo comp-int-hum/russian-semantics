@@ -25,14 +25,13 @@ vars.AddVariables(
     ("START_YEAR", "", 1500),
     ("END_YEAR", "", 1950),
     ("WINDOW_SIZE", "", 50),
+    ("USE_PREASSEMBLED_DATA", "", False),
 )
 
 
 env = Environment(
     variables=vars,
     ENV=os.environ,
-    tools=[],
-    
     BUILDERS={
         "FilterHathiTrust" : Builder(
             action="python scripts/filter_hathitrust.py --hathitrust_marc ${HATHITRUST_MARC} --language ${LANGUAGE} --output ${TARGETS[0]}"
@@ -43,16 +42,14 @@ env = Environment(
     }
 )
 
-#window_count = int((env["END_YEAR"] - env["START_YEAR"]) / env["WINDOW_SIZE"])
-#["work/window_{}.jsonl.gz".format(i) for i in range(window_count)],
-
-
-filtered = env.FilterHathiTrust(
-    "work/russian_documents.jsonl.gz",
-    []
-)
-
-populated = env.PopulateHathiTrust(
-    "work/full_russian_documents.jsonl.gz",
-    filtered
-)
+if env["USE_PREASSEMBLED_DATA"]:
+    populated = env.File("work/full_russian_documents.jsonl.gz")
+else:
+    filtered = env.FilterHathiTrust(
+        "work/russian_documents.jsonl.gz",
+        []
+    )
+    populated = env.PopulateHathiTrust(
+        "work/full_russian_documents.jsonl.gz",
+        filtered
+    )

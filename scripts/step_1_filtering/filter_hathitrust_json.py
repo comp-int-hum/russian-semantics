@@ -2,8 +2,8 @@ import json, gzip, os, time
 import regex as re
 from typing import Tuple, List, Dict, Generator, Any
 
-DEBUG_MODE : bool = False
-CREATE_METADATA : bool = True
+DEBUG_MODE : bool = True
+CREATE_METADATA : bool = False
 RE_FILTER_MODE : bool = DEBUG_MODE is not True
 
 EPSILON : float = 1e-7
@@ -31,7 +31,7 @@ def OUT_OF_IDX():
 def open_jsonl_file(file_path : str) -> Generator[Dict[str, Any], None, None]:
     with gzip.open(file_path, mode="rt") as f:
         for line in f:
-            yield json.loads(line)
+            yield line
 
 def write_jsonl_file(dump_file_path : str, item_data :Dict[str, str]) -> None:
     with gzip.open(dump_file_path, 'at', encoding='utf-8') as file:
@@ -43,7 +43,6 @@ def check_cyrillic_dicts() -> None:
         (lower_b, upper_b, range_num) = value
         print(f"the characters lower bound is {lower_b}, upper bound is {upper_b}")
         print(f"the range encompasses {ord(upper_b)- ord(lower_b) + 1} code points but is only assigned {range_num} code points")
-
 
 def re_filtering(data: str) -> str:
     # character class include:
@@ -57,17 +56,21 @@ if __name__ == '__main__':
     data_generator = open_jsonl_file(DUMP_RE_DATA_DIR) if DEBUG_MODE is True else open_jsonl_file(DATA_DIR)
     idx : int = 0
     # 从这里开始，别改了！！
-    prior_idx : int = 67257
+    prior_idx : int = 89353
 
     # get rid of all the data beforehand
     while idx < prior_idx:
         next(data_generator)
+        if idx % 50 == 0:
+            print(f"skipping to line #{idx}")
         idx += 1
+    
+    print(f"complete skipping the first {prior_idx} instances")
 
     try:
         if DEBUG_MODE is True:
             while True:
-                record : Dict[str, any] = next(data_generator)
+                record : Dict[str, any] = json.loads(next(data_generator))
                 if CREATE_METADATA is True:
                     metadata_instance : Dict[str, any] = {}
                     for key, value in record.items():
@@ -80,7 +83,7 @@ if __name__ == '__main__':
         
         if RE_FILTER_MODE is True:
             while True:
-                record : Dict[str, str] = next(data_generator)
+                record : Dict[str, str] = json.loads(next(data_generator))
                 record_copy : Dict[str, str]  = record.copy()
                 record_text : str = record['content']
                 record_matches : List[str] = re_filtering(record_text)

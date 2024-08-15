@@ -213,6 +213,9 @@ if __name__ == "__main__":
         dump_dataframe(dump_dir, df_filtered_early_translations)
 
     if args.step == 4:
+        raise Exception("already completed this step!")
+        # filter out
+        input_dir = f"/home/zxia15/data_zxia15/russian-semantics/work/f03_metadata_russian_documents.jsonl.gz"
         df = open_dataframe(input_dir, printable=True)
 
         # find the most frequently appearing authors among a bin of timescale
@@ -249,3 +252,22 @@ if __name__ == "__main__":
 
         with open("output.json", "w") as f:
             json.dump(writer_stats, f, indent=4)
+
+    if args.step == 5:
+        # filter out ratio that are not high enough
+        input_dir = f"/home/zxia15/data_zxia15/russian-semantics/work/f03_metadata_russian_documents.jsonl.gz"
+        dump_dir = f"/home/zxia15/data_zxia15/russian-semantics/work/f04_metadata_russian_documents.jsonl.gz"
+
+        df = open_dataframe(input_dir, printable=True)
+
+        filtered_df = df[df["russian text ratio"] != 0]
+        text_ratios = filtered_df["russian text ratio"]
+        plt.hist(x=text_ratios, bins=100, density=True)
+        plt.savefig("output.png")
+
+        filtered_above_95_df = df[df["russian text ratio"] >= 95]
+        print(
+            f"previously there are {len(filtered_df)} non-zero instances, "
+            + f"ultimately filtered to {len(filtered_above_95_df)} instances"
+        )
+        dump_dataframe(dump_dir, filtered_above_95_df)

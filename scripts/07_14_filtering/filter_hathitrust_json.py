@@ -1,6 +1,7 @@
-import json, gzip, os, time
+import json, time, gzip
 import regex as re
 from typing import Tuple, List, Dict, Generator, Any
+
 
 DEBUG_MODE: bool = True
 CREATE_METADATA: bool = False
@@ -26,10 +27,6 @@ CYRILLIC_UNICODE: Dict[str, Tuple[str, str, int]] = {
 }
 
 
-def OUT_OF_IDX():
-    raise Exception("the current data is out of index")
-
-
 def open_jsonl_file(file_path: str) -> Generator[Dict[str, Any], None, None]:
     with gzip.open(file_path, mode="rt") as f:
         for line in f:
@@ -40,6 +37,10 @@ def write_jsonl_file(dump_file_path: str, item_data: Dict[str, str]) -> None:
     with gzip.open(dump_file_path, "at", encoding="utf-8") as file:
         json_line = json.dumps(item_data)
         file.write(json_line + "\n")
+
+
+def OUT_OF_IDX():
+    raise Exception("the current data is out of index")
 
 
 def check_cyrillic_dicts() -> None:
@@ -105,7 +106,7 @@ if __name__ == "__main__":
                 record_copy["content"] = "".join(record_matches)
                 record_copy["russian text ratio"] = (
                     float(len(record_copy["content"]))
-                    / (float(len(record["content"])) + +EPSILON)
+                    / (float(len(record["content"])) + EPSILON)
                     * 100
                 )
                 write_jsonl_file(DUMP_RE_DATA_DIR, record_copy)

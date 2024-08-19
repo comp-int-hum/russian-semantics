@@ -1,11 +1,10 @@
-import logging, gzip, math, json, argparse, random, re
-from typing import Dict, List, Set, Optional, Tuple, Any, Generator
+import gzip, json, argparse, re
+from typing import Dict, List, Tuple, Any
 
 from gensim.models import Word2Vec
 from gensim.models.callbacks import CallbackAny2Vec
 from googletrans import Translator
 from tqdm import tqdm
-import random
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -83,6 +82,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_docs", type=int, default=0)
     parser.add_argument("--embedding_size", type=int, default=300)
     parser.add_argument("--random_seed", type=int, default=42)
+    parser.add_argument("--skip_model", action="store_true", default=False)
     parser.add_argument(
         "--window_size", type=int, default=5, help="Skip-gram window size"
     )
@@ -93,6 +93,7 @@ if __name__ == "__main__":
     assert args.model_output
     assert args.stats_output
     assert args.num_docs != 0
+    assert args.skip_model is False
 
     # \u0000-\u0020 --> all kinds of random space / tap/ etc.
     # \u0021 --> exclamation mark
@@ -107,53 +108,68 @@ if __name__ == "__main__":
     # \u003B --> semicolon
     # \u003F --> question mark
 
-    # step 1: saving and training model
-    print(f"step 1: saving and training model")
+    if args.skip_model is False:
 
-    non_punctuation_units = re.compile(
-        r"[^\u0000-\u0020\u0021\u0022\u0027-\u0029\u005B\u005D\u007B\u007D\u002C\u002E\u003A\u003B\u003F]+"
-    )
+        # step 1: saving and training model
+        print(f"step 1: saving and training model")
 
-    sentences = []
+        sentences = []
 
-    with gzip.open(args.input, "rt") as ifd:
-        idx_counter: int = 0
+        with gzip.open(args.input, "rt") as ifd:
+            idx_counter: int = 0
+            terminating_flag: bool = False
 
-        for entry in ifd:
-            j = json.loads(entry)
-            local_sentences: List[str] = non_punctuation_units.findall(j["content"])
-            local_sentences = [
-                local_sentence.lower() for local_sentence in local_sentences
-            ]
-            sentences.append(local_sentences)
-            idx_counter += 1
+            for entry in tqdm(ifd):
+                j = json.loads(entry)
+                sentences.append(j["content"].split())
+                idx_counter += 1
 
-            if args.num_docs <= idx_counter:
+                if args.num_docs <= idx_counter:
+                    print(f"--- iterating to idx {idx_counter} ---")
+                    terminating_flag = True
+                    break
+
+            if terminating_flag is False:
                 print(f"--- iterating to idx {idx_counter} ---")
-                break
 
-    model = Word2Vec(
-        sentences=sentences,
-        vector_size=args.embedding_size,
-        window=args.window_size,
-        min_count=1,
-        workers=4,
-        sg=1,
-        epochs=args.epochs,
-        seed=args.random_seed,
-        callbacks=[TrainingCallback()],
-    )
+        model = Word2Vec(
+            sentences=sentences,
+            vector_size=args.embedding_size,
+            window=args.window_size,
+            min_count=1,
+            workers=4,
+            sg=1,
+            epochs=args.epochs,
+            seed=args.random_seed,
+            callbacks=[TrainingCallback()],
+        )
 
-    print(f"--- complete training. Saving model to {args.model_output} ---")
-    model.save(args.model_output)
+        print(f"--- complete training. Saving model to {args.model_output} ---")
+        model.save(args.model_output)
 
     # step 2: use model for embedding variance check
     print(f"step 2: use model for embedding variance check")
+
+    if args.skip_model is True:
+        print(f"---- loading model from {args.model_output} ----")
+        model = Word2Vec.load(args.model_output)
+        print(f"---- successfully loaded model ----")
+
     words_of_interest: List[str] = [
+        # 1. some interesting imageries that might be used
+        "мост",  # bridge
+        "бронза",  # bronze
         "поезд",  # train
+        "бричка",  # The brichka is a type of light, four-wheeled carriage
+        # commonly used in Russia during the 19th century.
+        # In Dead Souls, the protagonist Chichikov travels
+        # around in a brichka as he goes about his dubious
+        # business of acquiring "dead souls" (deceased serfs).
+        # 2. some terminologies of particular significance to 19th century
+        # novelists
+        "Нигилизм",  # nihilism
         "Бесы",  # Demons
-        "церковь",  # church
-        "красный"  # red
+        "красный",  # red
         "Земля",  # Land
         "Власть",  # power
         "Тело",  # body

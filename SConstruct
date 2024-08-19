@@ -9,14 +9,19 @@ vars.AddVariables(
     # Running status
     ("USE_PREASSEMBLED_DATA", "", False),
     ("EXISTING_DOC_DIR", "", False),
+    # debug vocab bool
+    ("DEBUG_EMBEDDING_VOCAB", "", False),
+    # debug vocab params
+    ("VOCAB_COUNTER_NUM_DOCS", "", 5),
+    # embedding bool
     ("USE_PRETRAINED_EMBEDDING", "", False),
-    # ("GET_EMBEDDING_STATS", False),
     # embedding params
-    ("NUMBERS_OF_DOC", "", 10000),
+    ("NUMBERS_OF_DOC", "", 20000),
+    # ("GET_EMBEDDING_STATS", False),
     # model training
     ("NUMBERS_OF_TOPICS", "", [5, 10, 15, 20, 30]),
     ("DATA_ROOT", "", "/home/zxia15/data_zxia15/russian-semantics/work"),
-    ("DOC_DIR", "", "${DATA_ROOT}/final_filtered_russian_documents.jsonl.gz"),
+    ("DOC_DIR", "", "${DATA_ROOT}/final_cleaned_russian_documents.jsonl.gz"),
     ("CHUNK_SIZE", "", [500]),
     ("USE_GRID", "", 1),
     ("RANDOM_LENGTH", "", 2000),
@@ -60,8 +65,14 @@ env = Environment(
         "GenerateEmbeddingStats": Builder(
             action="python scripts/08_08_create_embeddings/generate_embedding_stats.py --input ${SOURCES[0]}"
         ),
+        "DebugEmbeddingVocab": Builder(
+            action="python scripts/08_14_modified_create_embeddings_pipeline/check_vocab_counter.py --input ${SOURCES} --output ${TARGETS} --num_docs ${VOCAB_COUNTER_NUM_DOCS}"
+        ),
         "TrainEmbeddingsAndStats": Builder(
             action="python scripts/08_14_modified_create_embeddings_pipeline/train_embeddings_and_generate_stats.py --input ${SOURCES} --model_output ${TARGETS[0]} --stats_output ${TARGETS[1]} --num_docs ${NUMBERS_OF_DOC}"
+        ),
+        "GetEmbeddingStats": Builder(
+            action="python scripts/08_14_modified_create_embeddings_pipeline/train_embeddings_and_generate_stats.py --input ${SOURCES} --model_output ${TARGETS[0]} --stats_output ${TARGETS[1]} --num_docs ${NUMBERS_OF_DOC} --skip_model"
         ),
     },
 )
@@ -81,29 +92,34 @@ print(" ----- skipped preassembing data ----- ")
 # The basic pattern for invoking a build rule is:
 #   "Rule(list_of_targets, list_of_sources, VARIABLE1=value, VARIABLE2=value...)"
 
-if not env["USE_PRETRAINED_EMBEDDING"]:
-    print(" ----- start creating embeddings ----- ")
-    # topic_model_list = []
-    assert env["EXISTING_DOC_DIR"]
-    jsonl_russian_doc_dir = env["DOC_DIR"]
+assert env["EXISTING_DOC_DIR"]
+jsonl_russian_doc_dir = env["DOC_DIR"]
 
-    # embeddings_list = []
-    # embeddings_list.append(
-    env.TrainEmbeddingsAndStats(
+if env["DEBUG_EMBEDDING_VOCAB"]:
+    print(" ----- creating counters on debugging embedding vocabs ----- ")
+    env.DebugEmbeddingVocab(
+        "work/vocab_freq.csv",
+        jsonl_russian_doc_dir,
+    )
+    exit(0)
+
+if env["USE_PRETRAINED_EMBEDDING"]:
+    print(" ----- skipped taining embedding, training embedding stats ----- ")
+    env.GetEmbeddingStats(
         [
-            f"work/word_2_vec_embeddings_doc{env['NUMBERS_OF_DOC']}.bin",
+            f"work/embeddings/word_2_vec_embeddings_doc{env['NUMBERS_OF_DOC']}.bin",
             f"image/embedding_similarity_table_doc{env['NUMBERS_OF_DOC']}.png",
         ],
         jsonl_russian_doc_dir,
     )
-    # )
-    # exit(0)
-
-print(" ----- skipped taining embedding ----- ")
-
-# # get the statistics for embeddings
-# if env["GET_EMBEDDING_STATS"]:
-#     print(" ----- start creating embeddings stats ----- ")
-#     env.GenerateEmbeddingStats(["image"], ["work/word_2_vec_embeddings.bin"])
+else:
+    print(" ----- taining embedding and stats ----- ")
+    env.TrainEmbeddingsAndStats(
+        [
+            f"work/embeddings/word_2_vec_embeddings_doc{env['NUMBERS_OF_DOC']}.bin",
+            f"image/embedding_similarity_table_doc{env['NUMBERS_OF_DOC']}.png",
+        ],
+        jsonl_russian_doc_dir,
+    )
 
 print(" ----- end of processing ----- ")

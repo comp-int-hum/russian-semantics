@@ -1,4 +1,5 @@
 .sconsign.dblite
 *~
+*__pycache__
 local
 work

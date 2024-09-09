@@ -1,125 +1,168 @@
-import os, os.path, logging, random, subprocess, shlex, gzip, re, functools, time, imp, sys, json
+import os, os.path
 from steamroller import Environment, Variables, Builder
 
 
-print(" ----- start defining variables ----- ")
-
 vars: Variables = Variables("custom.py")
 vars.AddVariables(
+    # data
+    ("DATA_ROOT", "", "/home/zxia15/data_zxia15/russian-semantics/work"),
+    ("DOC_DIR", "", "${DATA_ROOT}/stemmed_russian_documents_inuse.jsonl.gz"),
+    (
+        "EMBEDDING_DIR",
+        "",
+        "${DATA_ROOT}/embeddings/7500_stemmed_data/word_2_vec_embeddings.bin",
+    ),
     # Running status
     ("USE_PREASSEMBLED_DATA", "", False),
-    ("EXISTING_DOC_DIR", "", False),
-    # debug vocab bool
-    ("DEBUG_EMBEDDING_VOCAB", "", False),
-    # debug vocab params
-    ("VOCAB_COUNTER_NUM_DOCS", "", 5),
-    # embedding bool
     ("USE_PRETRAINED_EMBEDDING", "", False),
-    # embedding params
-    ("NUMBERS_OF_DOC", "", 20000),
-    # ("GET_EMBEDDING_STATS", False),
-    # model training
-    ("NUMBERS_OF_TOPICS", "", [5, 10, 15, 20, 30]),
-    ("DATA_ROOT", "", "/home/zxia15/data_zxia15/russian-semantics/work"),
-    ("DOC_DIR", "", "${DATA_ROOT}/final_cleaned_russian_documents.jsonl.gz"),
+    ("USE_PREASSEMBLED_STATS", "", False),
+    ("USE_PREEXISTING_DETM", "", False),
+    # embedding & debug vocab params
+    ("DEBUG_EMBEDDING_VOCAB", "", False),
+    ("USE_PART_OF_DOCS", "", False),
+    ("VOCAB_COUNTER_NUM_DOCS", "", 5),
+    ("NUMBERS_OF_DOC", "", -1),
+    ("EMBEDDING_SIZE", "", 100),
+    # model detm training params
+    ("USE_SBATCH", "", False),
+    ("NUM_TOP_WORDS", "", 8),
+    ("MIN_WORD_OCCURRENCE", "", 100),
+    ("MAX_WORD_PROPORTION", "", 0.7),
+    ("NUMBER_OF_TOPICS", "", 20),
+    ("WINDOW_SIZE", "", 100),
+    ("MAX_SUBDOC_LENGTH", "", 50),
     ("CHUNK_SIZE", "", [500]),
     ("USE_GRID", "", 1),
     ("RANDOM_LENGTH", "", 2000),
     ("NUM_ID_SPLITS", "", 500),
     ("LIMIT_SPLITS", "", None),
-    ("GPU_ACCOUNT", "", None),
-    ("GPU_QUEUE", "", None),
-    # ("GRID_TYPE","", "slurm"),
-    # ("GRID_GPU_COUNT","", 1),
-    # ("GRID_MEMORY", "", "64G"),
-    # ("GRID_TIME", "", "24:00:00"),
+    ("GPU_ACCOUNT", "", "tlippin1_gpu"),
+    ("GPU_QUEUE", "", "a100"),
+    ("BATCH_SIZE", "", 64),  # 16
+    ("EPOCHS", "", 1),
+    # ("LEARNING_RATES", "", [0.1, 0.05, 0.015]),
+    ("LEARNING_RATES", "", [0.015]),
+    ("LR_IDENTIFIERS", "", ["01", "005", "0015"]),
     ("BIMODAL_ATTESTATION_LEVEL", "", 1),
-    ("WINDOW_SIZE", "", [20]),
-    # ("FOLDS", "", 1),
-    # ("OUTPUT_WIDTH", "", 5000),
-    # ("DATA_ROOT", "", os.path.expanduser("~/corpora")),
-    # ("HATHITRUST_ROOT", "", "${DATA_ROOT}/hathi_trust"),
-    # ("HATHITRUST_INDEX", "", "${HATHITRUST_ROOT}/hathi_index.tsv.gz"),
-    # ("HATHITRUST_MARC", "", "${HATHITRUST_ROOT}/hathi_marc.json.gz"),
-    # ("LANGUAGE", "", "rus"),
-    # ("START_YEAR", "", 1500),
-    # ("END_YEAR", "", 1950),
-    # ("WINDOW_SIZE", "", 50),
+    ("RANDOM_SEED", "", 42),
 )
-
-print(" ----- start defining environment ----- ")
 
 env = Environment(
     variables=vars,
     ENV=os.environ,
     BUILDERS={
         "FilterHathiTrust": Builder(
-            action="python scripts/06_20_allocating_data/filter_hathitrust.py --hathitrust_marc ${HATHITRUST_MARC} --language ${LANGUAGE} --output ${TARGETS[0]}"
+            action="python scripts/filter_hathitrust.py --hathitrust_marc ${HATHITRUST_MARC} --language ${LANGUAGE} --output ${TARGETS[0]}"
         ),
         "PopulateHathiTrust": Builder(
-            action="python scripts/06_20_allocating_data/populate_hathitrust.py --input ${SOURCES[0]} --output ${TARGETS[0]} --hathitrust_root ${HATHITRUST_ROOT}"
-        ),
-        "TrainEmbeddings": Builder(
-            action="python scripts/08_08_create_embeddings/train_embeddings.py --input ${SOURCES[0]} --output ${TARGETS[0]}"
-        ),
-        "GenerateEmbeddingStats": Builder(
-            action="python scripts/08_08_create_embeddings/generate_embedding_stats.py --input ${SOURCES[0]}"
+            action="python scripts/populate_hathitrust.py --input ${SOURCES[0]} --output ${TARGETS[0]} --hathitrust_root ${HATHITRUST_ROOT}"
         ),
         "DebugEmbeddingVocab": Builder(
-            action="python scripts/08_14_modified_create_embeddings_pipeline/check_vocab_counter.py --input ${SOURCES} --output ${TARGETS} --num_docs ${VOCAB_COUNTER_NUM_DOCS}"
+            action="python scripts/check_vocab_counter.py --input ${SOURCES} --output ${TARGETS} --num_docs ${VOCAB_COUNTER_NUM_DOCS}"
         ),
         "TrainEmbeddingsAndStats": Builder(
-            action="python scripts/08_14_modified_create_embeddings_pipeline/train_embeddings_and_generate_stats.py --input ${SOURCES} --model_output ${TARGETS[0]} --stats_output ${TARGETS[1]} --num_docs ${NUMBERS_OF_DOC}"
+            action="python scripts/train_embeddings_and_generate_stats.py --input ${SOURCES} --model_output ${TARGETS[0]} --stats_output ${TARGETS[1]} --num_docs ${NUMBERS_OF_DOC} --embedding_size ${EMBEDDING_SIZE}"
         ),
         "GetEmbeddingStats": Builder(
-            action="python scripts/08_14_modified_create_embeddings_pipeline/train_embeddings_and_generate_stats.py --input ${SOURCES} --model_output ${TARGETS[0]} --stats_output ${TARGETS[1]} --num_docs ${NUMBERS_OF_DOC} --skip_model"
+            action="python scripts/train_embeddings_and_generate_stats.py --input ${SOURCES} --model_output ${TARGETS[0]} --stats_output ${TARGETS[1]} --num_docs ${NUMBERS_OF_DOC} --embedding_size ${EMBEDDING_SIZE} --skip_model"
         ),
+        "BuildDETMSlurm": Builder(
+            action=(
+                "python scripts/create_detm_sbatch_script.py "
+                + " --sbatch_script train_detm.sh --logger train_detm.out "
+                + "--command 'python scripts/train_detm.py --embeddings ${SOURCES[0]} --train ${SOURCES[1]}  --output ${TARGETS[0]} --num_topics ${NUMBER_OF_TOPICS} --batch_size ${BATCH_SIZE} --min_word_occurrence ${MIN_WORD_OCCURRENCE} --max_word_proportion ${MAX_WORD_PROPORTION} --window_size ${WINDOW_SIZE} --max_subdoc_length ${MAX_SUBDOC_LENGTH} --epochs ${EPOCHS} --emb_size ${EMBEDDING_SIZE} --rho_size ${EMBEDDING_SIZE} --learning_rate ${LEARNING_RATE} --random_seed ${RANDOM_SEED}' "
+                + "--job_name detm_model --use_gpu --account ${GPU_ACCOUNT} --partition ${GPU_QUEUE} --gres gpu:1 --time 24:00:00 --mem_alloc 180G"
+            )
+        ),
+        "TrainDETM": Builder(
+            action="python scripts/train_detm.py --embeddings ${SOURCES[0]} --train ${SOURCES[1]}  --output ${TARGETS[0]} --num_topics ${NUMBER_OF_TOPICS} --batch_size ${BATCH_SIZE} --min_word_occurrence ${MIN_WORD_OCCURRENCE} --max_word_proportion ${MAX_WORD_PROPORTION} --window_size ${WINDOW_SIZE} --max_subdoc_length ${MAX_SUBDOC_LENGTH} --epochs ${EPOCHS} --emb_size ${EMBEDDING_SIZE} --rho_size ${EMBEDDING_SIZE} --learning_rate ${LEARNING_RATE} --random_seed ${RANDOM_SEED}"
+        ),
+        # "TrainDETM": Builder(action="sbatch ${SOURCES[0]}"),
     },
 )
 
-print(" ----- start processing command ----- ")
 
 # populated full russian document data from hathitrust
 if not env["USE_PREASSEMBLED_DATA"]:
-    print(" ----- start preassembing data ----- ")
     filtered = env.FilterHathiTrust("work/russian_documents.jsonl.gz", [])
     populated = env.PopulateHathiTrust("work/full_russian_documents.jsonl.gz", filtered)
-    exit(0)
-
-print(" ----- skipped preassembing data ----- ")
 
 # after data filtering
 # The basic pattern for invoking a build rule is:
 #   "Rule(list_of_targets, list_of_sources, VARIABLE1=value, VARIABLE2=value...)"
 
-assert env["EXISTING_DOC_DIR"]
-jsonl_russian_doc_dir = env["DOC_DIR"]
+if env["USE_PREASSEMBLED_DATA"] and not env["USE_PREASSEMBLED_STATS"]:
+    jsonl_russian_doc_dir = env["DOC_DIR"]
 
-if env["DEBUG_EMBEDDING_VOCAB"]:
-    print(" ----- creating counters on debugging embedding vocabs ----- ")
-    env.DebugEmbeddingVocab(
-        "work/vocab_freq.csv",
-        jsonl_russian_doc_dir,
-    )
-    exit(0)
+    if env["DEBUG_EMBEDDING_VOCAB"]:
+        env.DebugEmbeddingVocab(
+            "work/vocab_freq.csv",
+            jsonl_russian_doc_dir,
+        )
 
-if env["USE_PRETRAINED_EMBEDDING"]:
-    print(" ----- skipped taining embedding, training embedding stats ----- ")
-    env.GetEmbeddingStats(
-        [
-            f"work/embeddings/word_2_vec_embeddings_doc{env['NUMBERS_OF_DOC']}.bin",
-            f"image/embedding_similarity_table_doc{env['NUMBERS_OF_DOC']}.png",
-        ],
-        jsonl_russian_doc_dir,
+    embedding_dir = (
+        f"work/embeddings/word_2_vec_embeddings_doc{env['NUMBERS_OF_DOC']}.bin"
+        if env["USE_PART_OF_DOCS"] and type(env["NUMBERS_OF_DOC"]) == int
+        else env["EMBEDDING_DIR"]
     )
-else:
-    print(" ----- taining embedding and stats ----- ")
-    env.TrainEmbeddingsAndStats(
-        [
-            f"work/embeddings/word_2_vec_embeddings_doc{env['NUMBERS_OF_DOC']}.bin",
-            f"image/embedding_similarity_table_doc{env['NUMBERS_OF_DOC']}.png",
-        ],
-        jsonl_russian_doc_dir,
+    stats_dir = (
+        f"images/embedding_similarity_table_doc{env['NUMBERS_OF_DOC']}.png"
+        if env["USE_PART_OF_DOCS"] and type(env["NUMBERS_OF_DOC"]) == int
+        else "images/embedding_stemmed_similarity_table.png"
     )
 
-print(" ----- end of processing ----- ")
+    if not env["USE_PRETRAINED_EMBEDDING"]:
+        env.TrainEmbeddingsAndStats([embedding_dir, stats_dir], jsonl_russian_doc_dir)
+
+    else:
+        env.GetEmbeddingStats([embedding_dir, stats_dir], jsonl_russian_doc_dir)
+
+
+if env["USE_PREASSEMBLED_STATS"] and not env["USE_PREEXISTING_DETM"]:
+    embeddings_dir = env["EMBEDDING_DIR"]
+    jsonl_russian_doc_dir = env["DOC_DIR"]
+
+    for idx in range(len(env["LEARNING_RATES"])):
+
+        output_file = f"work/detm_model_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['LR_IDENTIFIERS'][idx]}.bin"
+        slurm_file = f"train_detm_{env['LR_IDENTIFIERS'][idx]}.sh"
+        if not env["USE_SBATCH"]:
+            env.TrainDETM(
+                output_file,
+                [embeddings_dir, jsonl_russian_doc_dir],
+                LR_IDX=env["LR_IDENTIFIERS"][idx],
+                SLURM_FILE=slurm_file,
+                LEARNING_RATE=env["LEARNING_RATES"][idx],
+            )
+
+        else:
+            env.BuildDETMSlurm(
+                output_file,
+                [embeddings_dir, jsonl_russian_doc_dir],
+                LEARNING_RATE=env["LEARNING_RATES"][idx],
+                STEAMROLLER_ACCOUNT=env.get("GPU_ACCOUNT", None),
+                STEAMROLLER_GPU_COUNT=1,
+                STEAMROLLER_QUEUE=env.get("GPU_QUEUE", None),
+                STEAMROLLER_MEMORY="180G",
+            )
+
+# env.TrainDETM(output_file, ["train_detm.sh"])
+
+# topic_models = {}
+# for number_of_topics in env["NUMBERS_OF_TOPICS"]:
+#     for window_size in env["WINDOW_SIZES"]:
+#         for max_subdoc_length in env["MAX_SUBDOC_LENGTHS"]:
+#             model = env.TrainDETM(
+#                 "work/detm_model_${NUMBER_OF_TOPICS}_${MAX_SUBDOC_LENGTH}_${WINDOW_SIZE}.bin",
+#                 [embeddings_dir, jsonl_russian_doc_dir],
+#                 NUMBER_OF_TOPICS=number_of_topics,
+#                 BATCH_SIZE=2000,
+#                 MAX_SUBDOC_LENGTH=max_subdoc_length,
+#                 WINDOW_SIZE=window_size,
+#                 MAX_WORD_PROPORTION=0.7,
+#                 RANDOM_SEED=env["RANDOM_SEED"],
+#                 STEAMROLLER_ACCOUNT=env.get("GPU_ACCOUNT", None),
+#                 STEAMROLLER_GPU_COUNT=1,
+#                 STEAMROLLER_QUEUE=env.get("GPU_QUEUE", None),
+#                 STEAMROLLER_MEMORY="64G",
+#             )

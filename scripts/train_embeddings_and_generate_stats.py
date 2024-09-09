@@ -28,32 +28,26 @@ def get_translate_untranslate_tuple(
 def graph_tabular_data(
     full_interest_table_data,
     image_dest: str,
-    # wrap_width: int = 15,
     show_flag: bool = False,
 ):
     df = pd.DataFrame(full_interest_table_data)
-    # df = df.applymap(lambda x: "\n".join(textwrap.wrap(str(x), wrap_width)))
 
     fig, ax = plt.subplots(figsize=(len(df.columns) * 2, len(df) * 0.8))
     ax.axis("tight")
     ax.axis("off")
 
-    # Create the table with better formatting
     tbl = table(
         ax,
         df,
         loc="center",
         cellLoc="center",
-        # colWidths=[0.15] * len(df.columns)
         colWidths=[0.5] * len(df.columns),
     )
     tbl.auto_set_font_size(False)
     tbl.set_fontsize(10)
     tbl.scale(1.2, 2)
     tbl.auto_set_column_width(col=list(range(len(df.columns))))
-    # tbl.auto_set_column_height(col=list([0.3] * len(df.columns)))
 
-    # Save the table as an image with high resolution
     plt.savefig(image_dest, bbox_inches="tight", dpi=300)
 
     if show_flag is True:
@@ -79,7 +73,7 @@ if __name__ == "__main__":
     parser.add_argument("--stats_output", type=str, default=None)
     parser.add_argument("--epochs", dest="epochs", type=int, default=10)
     parser.add_argument("--topn", type=int, default=5)
-    parser.add_argument("--num_docs", type=int, default=0)
+    parser.add_argument("--num_docs", type=int, default=None)
     parser.add_argument("--embedding_size", type=int, default=300)
     parser.add_argument("--random_seed", type=int, default=42)
     parser.add_argument("--skip_model", action="store_true", default=False)
@@ -89,24 +83,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    assert args.input
-    assert args.model_output
-    assert args.stats_output
-    assert args.num_docs != 0
-    assert args.skip_model is False
-
-    # \u0000-\u0020 --> all kinds of random space / tap/ etc.
-    # \u0021 --> exclamation mark
-    # \u0022 --> double quotation mark
-    # \u0027 --> single quotation mark
-    # \u0028-\u0029 --> small brackets
-    # \u005B, \u005D --> mid brackets
-    # \u007B-\u007D --> big brackets
-    # \u002C --> comma
-    # \u002E --> period
-    # \u003A -->
-    # \u003B --> semicolon
-    # \u003F --> question mark
+    assert args.input and args.model_output and args.stats_output
 
     if args.skip_model is False:
 
@@ -124,7 +101,7 @@ if __name__ == "__main__":
                 sentences.append(j["content"].split())
                 idx_counter += 1
 
-                if args.num_docs <= idx_counter:
+                if args.num_docs is not None and args.num_docs > 0 and args.num_docs <= idx_counter:
                     print(f"--- iterating to idx {idx_counter} ---")
                     terminating_flag = True
                     break
@@ -160,13 +137,6 @@ if __name__ == "__main__":
         "мост",  # bridge
         "бронза",  # bronze
         "поезд",  # train
-        "бричка",  # The brichka is a type of light, four-wheeled carriage
-        # commonly used in Russia during the 19th century.
-        # In Dead Souls, the protagonist Chichikov travels
-        # around in a brichka as he goes about his dubious
-        # business of acquiring "dead souls" (deceased serfs).
-        # 2. some terminologies of particular significance to 19th century
-        # novelists
         "Нигилизм",  # nihilism
         "Бесы",  # Demons
         "красный",  # red

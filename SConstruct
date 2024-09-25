@@ -28,9 +28,11 @@ vars.AddVariables(
     ("NUM_TOP_WORDS", "", 8),
     ("MIN_WORD_OCCURRENCE", "", 100),
     ("MAX_WORD_PROPORTION", "", 0.7),
+    ("MIN_TIME", "", 1850),
+    ("MAX_TIME", "", 1900),
     ("NUMBER_OF_TOPICS", "", 20),
-    ("WINDOW_SIZE", "", 100),
-    ("MAX_SUBDOC_LENGTH", "", 50),
+    ("WINDOW_SIZE", "", 10),
+    ("MAX_SUBDOC_LENGTH", "", 500),
     ("CHUNK_SIZE", "", [500]),
     ("USE_GRID", "", 1),
     ("RANDOM_LENGTH", "", 2000),
@@ -38,11 +40,12 @@ vars.AddVariables(
     ("LIMIT_SPLITS", "", None),
     ("GPU_ACCOUNT", "", "tlippin1_gpu"),
     ("GPU_QUEUE", "", "a100"),
-    ("BATCH_SIZE", "", 64),  # 16
-    ("EPOCHS", "", 1),
-    # ("LEARNING_RATES", "", [0.1, 0.05, 0.015]),
+    ("BATCH_SIZE", "", 512),  # 2048?
+    ("EPOCHS", "", 150),
     ("LEARNING_RATES", "", [0.015]),
-    ("LR_IDENTIFIERS", "", ["01", "005", "0015"]),
+    # ("LEARNING_RATES", "", [0.1, 0.05, 0.015]),
+    ("LR_IDENTIFIERS", "", ["0015"]),
+    # ("LR_IDENTIFIERS", "", ["01", "005", "0015"]),
     ("BIMODAL_ATTESTATION_LEVEL", "", 1),
     ("RANDOM_SEED", "", 42),
 )
@@ -70,12 +73,24 @@ env = Environment(
             action=(
                 "python scripts/create_detm_sbatch_script.py "
                 + " --sbatch_script train_detm.sh --logger train_detm.out "
-                + "--command 'python scripts/train_detm.py --embeddings ${SOURCES[0]} --train ${SOURCES[1]}  --output ${TARGETS[0]} --num_topics ${NUMBER_OF_TOPICS} --batch_size ${BATCH_SIZE} --min_word_occurrence ${MIN_WORD_OCCURRENCE} --max_word_proportion ${MAX_WORD_PROPORTION} --window_size ${WINDOW_SIZE} --max_subdoc_length ${MAX_SUBDOC_LENGTH} --epochs ${EPOCHS} --emb_size ${EMBEDDING_SIZE} --rho_size ${EMBEDDING_SIZE} --learning_rate ${LEARNING_RATE} --random_seed ${RANDOM_SEED}' "
-                + "--job_name detm_model --use_gpu --account ${GPU_ACCOUNT} --partition ${GPU_QUEUE} --gres gpu:1 --time 24:00:00 --mem_alloc 180G"
+                + "--command 'python scripts/train_detm.py --embeddings ${SOURCES[0]} --train ${SOURCES[1]}  "
+                + "--output ${TARGETS[0]} --log ${TARGETS[1]} --num_topics ${NUMBER_OF_TOPICS} --batch_size ${BATCH_SIZE} --min_word_occurrence ${MIN_WORD_OCCURRENCE} "
+                + "--max_word_proportion ${MAX_WORD_PROPORTION} --window_size ${WINDOW_SIZE} --max_subdoc_length ${MAX_SUBDOC_LENGTH} --epochs ${EPOCHS} "
+                + "--emb_size ${EMBEDDING_SIZE} --rho_size ${EMBEDDING_SIZE} --learning_rate ${LEARNING_RATE} --random_seed ${RANDOM_SEED} "
+                + "--min_time ${MIN_TIME} --max_time ${MAX_TIME}' "
+                + "--job_name detm_model --use_gpu --account ${GPU_ACCOUNT} --partition ${GPU_QUEUE} "
+                + "--gres gpu:1 --time 24:00:00 --mem_alloc 180G"
             )
         ),
         "TrainDETM": Builder(
-            action="python scripts/train_detm.py --embeddings ${SOURCES[0]} --train ${SOURCES[1]}  --output ${TARGETS[0]} --num_topics ${NUMBER_OF_TOPICS} --batch_size ${BATCH_SIZE} --min_word_occurrence ${MIN_WORD_OCCURRENCE} --max_word_proportion ${MAX_WORD_PROPORTION} --window_size ${WINDOW_SIZE} --max_subdoc_length ${MAX_SUBDOC_LENGTH} --epochs ${EPOCHS} --emb_size ${EMBEDDING_SIZE} --rho_size ${EMBEDDING_SIZE} --learning_rate ${LEARNING_RATE} --random_seed ${RANDOM_SEED}"
+            action=(
+                "python scripts/train_detm.py --embeddings ${SOURCES[0]} --train ${SOURCES[1]}  "
+                + "--output ${TARGETS[0]} --log ${TARGETS[1]} --num_topics ${NUMBER_OF_TOPICS} --batch_size ${BATCH_SIZE} "
+                + "--min_word_occurrence ${MIN_WORD_OCCURRENCE} --max_word_proportion ${MAX_WORD_PROPORTION} "
+                + "--window_size ${WINDOW_SIZE} --max_subdoc_length ${MAX_SUBDOC_LENGTH} --epochs ${EPOCHS} "
+                + "--emb_size ${EMBEDDING_SIZE} --rho_size ${EMBEDDING_SIZE} --learning_rate ${LEARNING_RATE} "
+                + "--random_seed ${RANDOM_SEED} --min_time ${MIN_TIME} --max_time ${MAX_TIME}"
+            )
         ),
         # "TrainDETM": Builder(action="sbatch ${SOURCES[0]}"),
     },
@@ -124,11 +139,12 @@ if env["USE_PREASSEMBLED_STATS"] and not env["USE_PREEXISTING_DETM"]:
 
     for idx in range(len(env["LEARNING_RATES"])):
 
-        output_file = f"work/detm_model_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['LR_IDENTIFIERS'][idx]}.bin"
+        output_file = f"work/detm_model_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['LR_IDENTIFIERS'][idx]}_{env['EPOCHS']}.bin"
+        output_log = f"traim_detm_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['LR_IDENTIFIERS'][idx]}_{env['EPOCHS']}.out"
         slurm_file = f"train_detm_{env['LR_IDENTIFIERS'][idx]}.sh"
         if not env["USE_SBATCH"]:
             env.TrainDETM(
-                output_file,
+                [output_file, output_log],
                 [embeddings_dir, jsonl_russian_doc_dir],
                 LR_IDX=env["LR_IDENTIFIERS"][idx],
                 SLURM_FILE=slurm_file,
@@ -137,7 +153,7 @@ if env["USE_PREASSEMBLED_STATS"] and not env["USE_PREEXISTING_DETM"]:
 
         else:
             env.BuildDETMSlurm(
-                output_file,
+                [output_file, output_log],
                 [embeddings_dir, jsonl_russian_doc_dir],
                 LEARNING_RATE=env["LEARNING_RATES"][idx],
                 STEAMROLLER_ACCOUNT=env.get("GPU_ACCOUNT", None),

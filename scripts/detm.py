@@ -219,6 +219,23 @@ class DETM(torch.nn.Module):
             kl_t = self.get_kl(mu_t, logsigma_t, p_mu_t, logsigma_p_t)
             kl_eta.append(kl_t)
         kl_eta = torch.stack(kl_eta).sum()
+        if torch.any(torch.isnan(kl_eta)) or torch.any(torch.isnan(etas)):
+            print(f"etas: {etas}")
+            print(f"kl_eta: {kl_eta}")
+            print(f"parameters of get_eta: {rnn_inp}")
+            print(f"inp : {inp}")
+            print(f"output: {output}")
+            print(f"mu_0: {mu_0}")
+            print(f"logsigma_0: {logsigma_0}")
+            # with open("error_output.txt", "a") as f:
+            #     f.write(f"etas: {etas}")
+            #     f.write(f"kl_eta: {kl_eta}")
+            #     f.write(f"parameters of get_eta: {rnn_inp}")
+            #     f.write(f"inp : {inp}")
+            #     f.write(f"output: {output}")
+            #     f.write(f"mu_0: {mu_0}")
+            #     f.write(f"logsigma_0: {logsigma_0}")
+            # raise Exception("getting nan number on eta")
         return etas, kl_eta
 
     def get_theta(self, eta, bows, times):  ## amortized inference
@@ -240,9 +257,9 @@ class DETM(torch.nn.Module):
         )
         if torch.any(torch.isnan(kl_theta)):
             print(f"parameters of get_theta: {eta}; {bows}; {times}")
-            with open('error_output.txt', 'w') as f:
-                f.write(f"parameters of get_theta: {eta}; {bows}; {times}")
-            raise Exception('getting nan number on theta')
+            # with open("error_output.txt", "a") as f:
+            #     f.write(f"parameters of get_theta: {eta}; {bows}; {times}")
+            # raise Exception("getting nan number on theta")
         return theta, kl_theta
 
     def get_beta(self, alpha):

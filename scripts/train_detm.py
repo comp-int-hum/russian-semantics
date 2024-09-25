@@ -130,6 +130,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output", dest="output", help="File to save model to", required=True
     )
+    parser.add_argument("--log", dest="log", help="File to store log to", required=True)
     parser.add_argument(
         "--max_subdoc_length",
         dest="max_subdoc_length",
@@ -278,7 +279,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     logging.basicConfig(
-        format="%(asctime)s : %(levelname)s : %(message)s", level=logging.INFO
+        format="%(asctime)s : %(levelname)s : %(message)s",
+        level=logging.INFO,
+        filename=args.log,
     )
 
     args.device = (
@@ -306,33 +309,36 @@ if __name__ == "__main__":
                 for line in ifd:
                     j = json.loads(line)
                     time = int(j["year"])
-                    unique_times.add(time)
-                    title = j["title"]
-                    author = j["author"]
-                    docs = []
-                    # print(j["full_text"])
-                    full_text_words = j["content"].split()
-                    for word in full_text_words:
-                        # print(full_text_words)
-                        docs.append(word)
-                    for subdoc_num, subdoc in enumerate(
-                        split_doc(docs, args.max_subdoc_length)
+                    if (args.min_time is None or time >= args.max_time) and (
+                        args.max_time is None or time <= args.max_time
                     ):
-                        utokens = set()
-                        total_subdocs += 1
-                        for t in subdoc:
-                            utokens.add(t)
-                        for t in utokens:
-                            token2subdoccount[t] = token2subdoccount.get(t, 0) + 1
-                        data[name].append(
-                            {
-                                "time": time,
-                                "tokens": subdoc,
-                                "title": j["title"],
-                                "author": j["author"],
-                                "subdoc_number": subdoc_num,
-                            }
-                        )
+                        unique_times.add(time)
+                        title = j["title"]
+                        author = j["author"]
+                        docs = []
+                        # print(j["full_text"])
+                        full_text_words = j["content"].split()
+                        for word in full_text_words:
+                            # print(full_text_words)
+                            docs.append(word)
+                        for subdoc_num, subdoc in enumerate(
+                            split_doc(docs, args.max_subdoc_length)
+                        ):
+                            utokens = set()
+                            total_subdocs += 1
+                            for t in subdoc:
+                                utokens.add(t)
+                            for t in utokens:
+                                token2subdoccount[t] = token2subdoccount.get(t, 0) + 1
+                            data[name].append(
+                                {
+                                    "time": time,
+                                    "tokens": subdoc,
+                                    "title": j["title"],
+                                    "author": j["author"],
+                                    "subdoc_number": subdoc_num,
+                                }
+                            )
     elif args.train:  # only provided train data, so goes here
         all_subdocs = []
         with gzip.open(args.train, "rt") as ifd:
@@ -343,41 +349,46 @@ if __name__ == "__main__":
                 # print(j)
                 if type(j["year"]) == int:
                     time = int(j["year"])
-                    unique_times.add(time)  # take a set of unique year numbers
-                    title = j["tutle"]
-                    author = j["author"]
-                    doc = []
-                    full_text_words = j["content"].split()
-                    doc.extend(full_text_words)
-                    # print(full_text_words)
-                    # for x in full_text_words:
-                    #   doc.append(x)
-                    # print(doc)
-                    for subdoc_num, subdoc in enumerate(
-                        split_doc(doc, args.max_subdoc_length)
+                    # try to eliminated unneeded instances right here
+                    if (args.min_time is None or time > args.min_time) and (
+                        args.max_time is None or time < args.max_time
                     ):
-                        utokens = set()
-                        total_subdocs += 1
-                        # print("this is dubdoc_num")
-                        # print(subdoc_num)
-                        # print("this is dubdoc")
-                        # print(subdoc)
-                        for t in subdoc:
-                            utokens.add(t)
-                        for t in utokens:
-                            token2subdoccount[t] = token2subdoccount.get(t, 0) + 1
-                        local_dict = {
-                            "time": time,
-                            "tokens": subdoc,
-                            "title": j["tutle"],
-                            "author": j["author"],
-                            "subdoc_number": subdoc_num,
-                        }
-                        all_subdocs.append(local_dict)
-                    # print("this is the local_dict")
-                    # print(local_dict)
+                        unique_times.add(time)  # take a set of unique year numbers
+                        title = j["tutle"]
+                        author = j["author"]
+                        doc = []
+                        full_text_words = j["content"].split()
+                        doc.extend(full_text_words)
+                        # print(full_text_words)
+                        # for x in full_text_words:
+                        #   doc.append(x)
+                        # print(doc)
+                        for subdoc_num, subdoc in enumerate(
+                            split_doc(doc, args.max_subdoc_length)
+                        ):
+                            utokens = set()
+                            total_subdocs += 1
+                            # print("this is dubdoc_num")
+                            # print(subdoc_num)
+                            # print("this is dubdoc")
+                            # print(subdoc)
+                            for t in subdoc:
+                                utokens.add(t)
+                            for t in utokens:
+                                token2subdoccount[t] = token2subdoccount.get(t, 0) + 1
+                            local_dict = {
+                                "time": time,
+                                "tokens": subdoc,
+                                "title": j["tutle"],
+                                "author": j["author"],
+                                "subdoc_number": subdoc_num,
+                            }
+                            all_subdocs.append(local_dict)
+                        # print("this is the local_dict")
+                        # print(local_dict)
 
         random.shuffle(all_subdocs)
+        print(f"the total number of subdocs are {len(all_subdocs)}")
         train_count = math.ceil(args.train_proportion * len(all_subdocs))
         data["train"] = all_subdocs[:train_count]
         data["val"] = all_subdocs[train_count:]
@@ -410,14 +421,10 @@ if __name__ == "__main__":
     sorted_times = list(sorted(unique_times))
 
     min_time = args.min_time if args.min_time else (sorted_times[0] - 1)
-    # print(min_time)
+    print(f"min_time: {min_time}")
     max_time = args.max_time if args.max_time else (sorted_times[-1] + 1)
-    # print(max_time)
+    print(f"max_time: {max_time}")
     span = max_time - min_time
-
-    # min_time = sorted_times[0]
-    # max_time = sorted_times[-1]
-    # span = max_time - min_time + 1
 
     time2window = {}
 

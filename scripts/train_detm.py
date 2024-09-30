@@ -272,8 +272,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--delta", type=float, default=0.005, help="prior variance")
     parser.add_argument("--train_proportion", type=float, default=0.7, help="")
-    parser.add_argument("--min_time", type=int, default=0)
-    parser.add_argument("--max_time", type=int, default=0)
+    parser.add_argument("--min_time", type=int, default=None)
+    parser.add_argument("--max_time", type=int, default=None)
     parser.add_argument("--early_stop", type=int, default=20)
     parser.add_argument("--reduce_rate", type=int, default=5)
     args = parser.parse_args()
@@ -354,7 +354,7 @@ if __name__ == "__main__":
                         args.max_time is None or time < args.max_time
                     ):
                         unique_times.add(time)  # take a set of unique year numbers
-                        title = j["tutle"]
+                        title = j["title"]
                         author = j["author"]
                         doc = []
                         full_text_words = j["content"].split()
@@ -379,7 +379,7 @@ if __name__ == "__main__":
                             local_dict = {
                                 "time": time,
                                 "tokens": subdoc,
-                                "title": j["tutle"],
+                                "title": j["title"],
                                 "author": j["author"],
                                 "subdoc_number": subdoc_num,
                             }

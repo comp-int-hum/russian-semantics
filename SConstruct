@@ -41,7 +41,7 @@ vars.AddVariables(
     ("GPU_ACCOUNT", "", "tlippin1_gpu"),
     ("GPU_QUEUE", "", "a100"),
     ("BATCH_SIZE", "", 512),  # 2048?
-    ("EPOCHS", "", 150),
+    ("EPOCHS", "", 200),
     ("LEARNING_RATES", "", [0.015]),
     # ("LEARNING_RATES", "", [0.1, 0.05, 0.015]),
     ("LR_IDENTIFIERS", "", ["0015"]),
@@ -91,6 +91,9 @@ env = Environment(
                 + "--emb_size ${EMBEDDING_SIZE} --rho_size ${EMBEDDING_SIZE} --learning_rate ${LEARNING_RATE} "
                 + "--random_seed ${RANDOM_SEED} --min_time ${MIN_TIME} --max_time ${MAX_TIME}"
             )
+        ),
+        "ApplyDETM": Builder(
+            action="python scripts/apply_detm.py --model ${SOURCES[0]} --input ${SOURCES[1]} --output ${TARGETS[0]}  --log ${TARGETS[1]} --max_subdoc_length ${MAX_SUBDOC_LENGTH} --min_time ${MIN_TIME} --max_time ${MAX_TIME}"
         ),
         # "TrainDETM": Builder(action="sbatch ${SOURCES[0]}"),
     },
@@ -162,23 +165,13 @@ if env["USE_PREASSEMBLED_STATS"] and not env["USE_PREEXISTING_DETM"]:
                 STEAMROLLER_MEMORY="180G",
             )
 
-# env.TrainDETM(output_file, ["train_detm.sh"])
-
-# topic_models = {}
-# for number_of_topics in env["NUMBERS_OF_TOPICS"]:
-#     for window_size in env["WINDOW_SIZES"]:
-#         for max_subdoc_length in env["MAX_SUBDOC_LENGTHS"]:
-#             model = env.TrainDETM(
-#                 "work/detm_model_${NUMBER_OF_TOPICS}_${MAX_SUBDOC_LENGTH}_${WINDOW_SIZE}.bin",
-#                 [embeddings_dir, jsonl_russian_doc_dir],
-#                 NUMBER_OF_TOPICS=number_of_topics,
-#                 BATCH_SIZE=2000,
-#                 MAX_SUBDOC_LENGTH=max_subdoc_length,
-#                 WINDOW_SIZE=window_size,
-#                 MAX_WORD_PROPORTION=0.7,
-#                 RANDOM_SEED=env["RANDOM_SEED"],
-#                 STEAMROLLER_ACCOUNT=env.get("GPU_ACCOUNT", None),
-#                 STEAMROLLER_GPU_COUNT=1,
-#                 STEAMROLLER_QUEUE=env.get("GPU_QUEUE", None),
-#                 STEAMROLLER_MEMORY="64G",
-#             )
+if env["USE_PREEXISTING_DETM"]:
+    if not env["USE_SBATCH"]:
+        jsonl_russian_doc_dir = env["DOC_DIR"]
+        model_file = f"work/1850_1900_model/detm_model_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['LR_IDENTIFIERS'][0]}_{env['EPOCHS']}.bin"
+        output_file = f"work/apply_model_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['LR_IDENTIFIERS'][0]}_{env['EPOCHS']}.bin"
+        output_log = (
+            f"apply_detm_{env['MIN_TIME']}_{env['MAX_TIME']}_Epoch_{env['EPOCHS']}.out"
+        )
+        # slurm_file = f"apply_detm_{env['MIN_TIME']}_{env['MAX_TIME']}.sh"
+        env.ApplyDETM([output_file, output_log], [model_file, jsonl_russian_doc_dir])

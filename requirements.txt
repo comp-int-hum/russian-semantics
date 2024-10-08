@@ -1,3 +1,10 @@
+torch
+gensim
+matplotlib
+pandas
+ruptures
+googletrans
+translate
 pairtree
 fasttext
 demarc @ git+https://github.com/comp-int-hum/demarc.git@7a75118bcff00b72343f06655569c62d31ee2bd5

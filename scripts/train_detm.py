@@ -309,8 +309,8 @@ if __name__ == "__main__":
                 for line in ifd:
                     j = json.loads(line)
                     time = int(j["year"])
-                    if (args.min_time is None or time >= args.max_time) and (
-                        args.max_time is None or time <= args.max_time
+                    if (args.min_time is None or time >= args.min_time) and (
+                        args.max_time is None or time < args.max_time
                     ):
                         unique_times.add(time)
                         title = j["title"]

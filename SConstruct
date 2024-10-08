@@ -5,7 +5,7 @@ from steamroller import Environment, Variables, Builder
 vars: Variables = Variables("custom.py")
 vars.AddVariables(
     # data
-    ("DATA_ROOT", "", "/home/zxia15/data_zxia15/russian-semantics/work"),
+    ("DATA_ROOT", "", "/home/zxia15/russian-semantics/work"),
     ("DOC_DIR", "", "${DATA_ROOT}/stemmed_russian_documents_inuse.jsonl.gz"),
     (
         "EMBEDDING_DIR",
@@ -41,7 +41,7 @@ vars.AddVariables(
     ("GPU_ACCOUNT", "", "tlippin1_gpu"),
     ("GPU_QUEUE", "", "a100"),
     ("BATCH_SIZE", "", 512),  # 2048?
-    ("EPOCHS", "", 200),
+    ("EPOCHS", "", 100),
     ("LEARNING_RATES", "", [0.015]),
     # ("LEARNING_RATES", "", [0.1, 0.05, 0.015]),
     ("LR_IDENTIFIERS", "", ["0015"]),
@@ -93,9 +93,14 @@ env = Environment(
             )
         ),
         "ApplyDETM": Builder(
-            action="python scripts/apply_detm.py --model ${SOURCES[0]} --input ${SOURCES[1]} --output ${TARGETS[0]}  --log ${TARGETS[1]} --max_subdoc_length ${MAX_SUBDOC_LENGTH} --min_time ${MIN_TIME} --max_time ${MAX_TIME}"
+            action="CUDA_LAUNCH_BLOCKING=1 TORCH_USE_CUDA_DSA=1 python scripts/apply_detm.py --model ${SOURCES[0]} --input ${SOURCES[1]} --output ${TARGETS[0]}  --log ${TARGETS[1]} --max_subdoc_length ${MAX_SUBDOC_LENGTH} --min_time ${MIN_TIME} --max_time ${MAX_TIME}"
         ),
-        # "TrainDETM": Builder(action="sbatch ${SOURCES[0]}"),
+        "CreateMatrices" : Builder(
+            action="python scripts/create_matrices.py --topic_annotations ${SOURCES[0]} --log ${TARGETS[1]} --output ${TARGETS[0]} --window_size ${WINDOW_SIZE} --min_time ${MIN_TIME}"
+        ),
+        "CreateFigures" : Builder(
+            action="python scripts/create_figures.py --input ${SOURCES[0]} --latex ${TARGETS[0]} --temporal_image ${TARGETS[1]} --num_top_words ${NUM_TOP_WORDS}"
+        )
     },
 )
 
@@ -174,4 +179,15 @@ if env["USE_PREEXISTING_DETM"]:
             f"apply_detm_{env['MIN_TIME']}_{env['MAX_TIME']}_Epoch_{env['EPOCHS']}.out"
         )
         # slurm_file = f"apply_detm_{env['MIN_TIME']}_{env['MAX_TIME']}.sh"
-        env.ApplyDETM([output_file, output_log], [model_file, jsonl_russian_doc_dir])
+        # env.ApplyDETM([output_file, output_log], [model_file, jsonl_russian_doc_dir])
+        topic_annotations = output_file
+        output_file = "work/matrices_${NUMBER_OF_TOPICS}_${MAX_SUBDOC_LENGTH}_${WINDOW_SIZE}.pkl.gz"
+        output_log = (
+            f"create_matrices_{env['MIN_TIME']}_{env['MAX_TIME']}_Epoch_{env['EPOCHS']}.out"
+        )
+        # env.CreateMatrices([output_file, output_log], topic_annotations)
+        matrices_input = output_file
+        latex_output = "work/tables_${NUMBER_OF_TOPICS}_${MAX_SUBDOC_LENGTH}_${WINDOW_SIZE}.tex"
+        figure_output = "work/temporal_image_${NUMBER_OF_TOPICS}_${MAX_SUBDOC_LENGTH}_${WINDOW_SIZE}.png"
+
+        env.CreateFigures([latex_output, figure_output], matrices_input)

@@ -18,10 +18,13 @@ def get_translate_untranslate_tuple(
 ) -> str:
     try:
         assert type(rus_word) == str
+        eng_word: str = translator.translate(rus_word)
+        #                                      , src="ru", dest="en").text
     except Exception as e:
         print(f"meeting error on russian word {rus_word}")
+        print(str(e))
+        # exit(0)
         return rus_word
-    eng_word: str = translator.translate(rus_word, src="ru", dest="en").text
     return f"{rus_word}({eng_word})"
 
 

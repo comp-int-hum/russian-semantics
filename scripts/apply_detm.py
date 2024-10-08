@@ -1,4 +1,4 @@
-import logging, gzip, math, json, argparse, torch
+import logging, gzip, math, json, argparse, torch, os
 from gensim.models import Word2Vec
 import numpy as np
 from detm import DETM
@@ -52,11 +52,14 @@ def apply(model, data, norm_data, times, rnn_input, num_subdocs, device):
     val_batch_size = 1000
 
     eta = get_eta(model, rnn_input, device)
-
-    eta_td = eta[times.long()]
+    logger.info(f'eta shape: {eta.shape}, eta matrix: {eta}')
+    logger.info(f'times shape: {times.shape}, times matrix: {times}')
+    eta_td = eta[times.type("torch.LongTensor")]
+    #eta[times.long()]
     # eta[times.type("torch.LongTensor")]
     theta = get_theta(eta_td, norm_data)
-    alpha_td = alpha[:, times.long(), :]
+    alpha_td = alpha[:, times.type("torch.LongTensor"), :]
+    # alpha[:, times.long(), :]
     # alpha[:, times.type("torch.LongTensor"), :]
     beta = model.get_beta(alpha_td).permute(1, 0, 2)
 
@@ -66,6 +69,9 @@ def apply(model, data, norm_data, times, rnn_input, num_subdocs, device):
 
 
 if __name__ == "__main__":
+
+    os.environ['CUDA_LAUNCH_BLOCKING']="1"
+    os.environ['TORCH_USE_CUDA_DSA'] = "1"
 
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
@@ -96,7 +102,7 @@ if __name__ == "__main__":
     )
 
     if not args.device:
-        args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        args.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     elif args.device == "cuda" and not torch.cuda.is_available():
         logger.warning("Setting device to CPU because CUDA isn't available")
         args.device = "cpu"
@@ -118,8 +124,8 @@ if __name__ == "__main__":
                 # break
                 if type(j["year"]) == int:
                     time = int(j["year"])
-                    if (args.min_time is None or time >= args.max_time) and (
-                        args.max_time is None or time <= args.max_time
+                    if (args.min_time is None or time > args.min_time) and (
+                        args.max_time is None or time < args.max_time
                     ):
                         window = int((time - model.min_time) / model.window_size)
                         title = j["title"]
@@ -187,34 +193,35 @@ if __name__ == "__main__":
         indices = torch.arange(0, len(all_subdocs), dtype=torch.int)
         indices = torch.split(indices, args.batch_size)
 
-        try:
-            for idx, ind in enumerate(indices):
-                batch_size = len(ind)
-                data_batch = np.zeros((batch_size, len(model.id2token)))
-                times_batch = np.zeros((batch_size,))
-                subdocs_batch = []
-                for i, doc_id in enumerate(ind):
-                    subdoc = all_subdocs[doc_id]
-                    times_batch[i] = subdoc["window"]  # timestamp
-                    for k, v in subdoc["counts"].items():
-                        data_batch[i, k] = v
-                data_batch = torch.from_numpy(data_batch).float().to(args.device)
-                times_batch = torch.from_numpy(times_batch).to(args.device)
-                sums = data_batch.sum(1).unsqueeze(1)
-                normalized_data_batch = data_batch / sums
-                try:
-                    out = apply(
-                        model,
-                        data_batch,
-                        normalized_data_batch,
-                        times_batch,
-                        rnn_input,
-                        len(all_subdocs),
-                        args.device,
-                    )
-                except Exception as e:
-                    print(f"encountering exception on apply {str(e)}")
-                    raise Exception(e)
+        
+        for idx, ind in enumerate(indices):
+            batch_size = len(ind)
+            data_batch = np.zeros((batch_size, len(model.id2token)))
+            times_batch = np.zeros((batch_size,))
+            subdocs_batch = []
+            for i, doc_id in enumerate(ind):
+                subdoc = all_subdocs[doc_id]
+                times_batch[i] = subdoc["window"]  # timestamp
+                for k, v in subdoc["counts"].items():
+                    data_batch[i, k] = v
+            data_batch = torch.from_numpy(data_batch).float().to(args.device)
+            times_batch = torch.from_numpy(times_batch).to(args.device)
+            sums = data_batch.sum(1).unsqueeze(1)
+            normalized_data_batch = data_batch / sums
+            try:
+                out = apply(
+                    model,
+                    data_batch,
+                    normalized_data_batch,
+                    times_batch,
+                    rnn_input,
+                    len(all_subdocs),
+                    args.device,
+                )
+            except Exception as e:
+                logger.info(f"encountering exception on apply execution: {str(e)}")
+                raise Exception(e)
+            try:
                 for lik, i in zip(out, ind):
                     lik = lik.argmax(0)
                     all_subdocs[i]["text"] = [
@@ -226,9 +233,9 @@ if __name__ == "__main__":
                         for tok, tid in all_subdocs[i]["text"]
                     ]
                     del all_subdocs[i]["counts"]
-        except Exception as e:
-            logger.info(f"received error when applying : {str(e)}")
-            raise Exception(e)
+            except Exception as e:
+                logger.info(f"received error when enumerating text : {str(e)}")
+                raise Exception(e)
 
         with gzip.open(args.output, "wt") as ofd:
             for sd in all_subdocs:

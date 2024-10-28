@@ -7,6 +7,7 @@ import warnings
 import pickle
 import logging
 from matplotlib.figure import Figure
+import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.gridspec import GridSpec
 from matplotlib import colormaps
@@ -53,6 +54,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", dest="input", help="Input file")
+    parser.add_argument("--output", dest="output", help="Output file")
     parser.add_argument("--log", dest="log")
     parser.add_argument("--top_n", dest="top_n", type=int, default=8)
     parser.add_argument("--step_size", dest="step_size", type=int, default=1)
@@ -143,6 +145,36 @@ if __name__ == "__main__":
                 logging.info(f"score {top_n_htids[idx]}; idx {idx}; htid {id2htid[top_n_indices[idx]]}")
                 
             logging.info("\n")
+    if args.figure_type == "topic_per_window_dist":
+        # sum up all the words over every window
+        per_window_topic_dist = htid_win_topic.sum(0)
+        per_window_topic_dist = (per_window_topic_dist.T / per_window_topic_dist.sum(1)).T
+
+        logger.info(per_window_topic_dist.shape)
+        logger.info(per_window_topic_dist[0, :])
+        logger.info(per_window_topic_dist[:, 0])
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        time_windows = numpy.arange(5)
+        cmap = plt.get_cmap('tab20')  # Use 'tab20' for 20 distinct colors
+        colors = cmap(numpy.arange(20))  # Get 20 colors from the colormap
+
+        # Use stackplot to create the area plot
+        ax.stackplot(time_windows, per_window_topic_dist.T, labels=[f"Category {i}" for i in range(20)], alpha=0.8, colors=colors)
+
+        # Step 4: Customize plot
+        ax.set_title("Category Proportions Over Time Windows", fontsize=14)
+        ax.set_xlabel("Time Windows", fontsize=12)
+        ax.set_ylabel("Proportion", fontsize=12)
+
+
+        ax.set_xticks([0, 1, 2, 3, 4])  # Set 5 ticks corresponding to the 5 time windows
+        ax.set_xticklabels(['1860', '1870', '1880', '1890', "1900"]) 
+
+        ax.legend(loc='upper left', bbox_to_anchor=(1, 1), fontsize=8)  # Adjust legend position
+
+        plt.tight_layout()
+        plt.savefig(args.output)
 
     if args.figure_type == "default":
         win_topic = word_win_topic.sum(0)

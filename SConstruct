@@ -49,7 +49,7 @@ vars.AddVariables(
     ("BIMODAL_ATTESTATION_LEVEL", "", 1),
     ("RANDOM_SEED", "", 42),
     # create figures params
-    ("FIGURE_TYPE", "", "topic_top_titles")
+    ("FIGURE_TYPE", "", "topic_per_window_dist")
 )
 
 env = Environment(
@@ -101,7 +101,7 @@ env = Environment(
             action="python scripts/create_matrices.py --topic_annotations ${SOURCES[0]} --log ${TARGETS[1]} --output ${TARGETS[0]} --window_size ${WINDOW_SIZE} --min_time ${MIN_TIME}"
         ),
         "CreateFigures" : Builder(
-            action="python scripts/create_figures.py --input ${SOURCES[0]} --latex ${TARGETS[0]} --temporal_image ${TARGETS[1]} --top_n ${NUM_TOP_WORDS} --log ${TARGETS[2]} --figure_type ${FIGURE_TYPE}"
+            action="python scripts/create_figures.py --input ${SOURCES[0]} --latex ${TARGETS[0]} --output ${TARGETS[1]} --top_n ${NUM_TOP_WORDS} --log ${TARGETS[2]} --figure_type ${FIGURE_TYPE}"
         )
     },
 )

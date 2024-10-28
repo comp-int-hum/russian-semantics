@@ -40,14 +40,16 @@ vars.AddVariables(
     ("LIMIT_SPLITS", "", None),
     ("GPU_ACCOUNT", "", "tlippin1_gpu"),
     ("GPU_QUEUE", "", "a100"),
-    ("BATCH_SIZE", "", 512),  # 2048?
-    ("EPOCHS", "", 100),
+    ("BATCH_SIZE", "", 256),  # 2048?
+    ("EPOCHS", "", 200),
     ("LEARNING_RATES", "", [0.015]),
     # ("LEARNING_RATES", "", [0.1, 0.05, 0.015]),
     ("LR_IDENTIFIERS", "", ["0015"]),
     # ("LR_IDENTIFIERS", "", ["01", "005", "0015"]),
     ("BIMODAL_ATTESTATION_LEVEL", "", 1),
     ("RANDOM_SEED", "", 42),
+    # create figures params
+    ("FIGURE_TYPE", "", "topic_top_titles")
 )
 
 env = Environment(
@@ -99,7 +101,7 @@ env = Environment(
             action="python scripts/create_matrices.py --topic_annotations ${SOURCES[0]} --log ${TARGETS[1]} --output ${TARGETS[0]} --window_size ${WINDOW_SIZE} --min_time ${MIN_TIME}"
         ),
         "CreateFigures" : Builder(
-            action="python scripts/create_figures.py --input ${SOURCES[0]} --latex ${TARGETS[0]} --temporal_image ${TARGETS[1]} --num_top_words ${NUM_TOP_WORDS}"
+            action="python scripts/create_figures.py --input ${SOURCES[0]} --latex ${TARGETS[0]} --temporal_image ${TARGETS[1]} --top_n ${NUM_TOP_WORDS} --log ${TARGETS[2]} --figure_type ${FIGURE_TYPE}"
         )
     },
 )
@@ -178,7 +180,7 @@ if env["USE_PREEXISTING_DETM"]:
         output_log = (
             f"apply_detm_{env['MIN_TIME']}_{env['MAX_TIME']}_Epoch_{env['EPOCHS']}.out"
         )
-        # slurm_file = f"apply_detm_{env['MIN_TIME']}_{env['MAX_TIME']}.sh"
+        slurm_file = f"apply_detm_{env['MIN_TIME']}_{env['MAX_TIME']}.sh"
         # env.ApplyDETM([output_file, output_log], [model_file, jsonl_russian_doc_dir])
         topic_annotations = output_file
         output_file = "work/matrices_${NUMBER_OF_TOPICS}_${MAX_SUBDOC_LENGTH}_${WINDOW_SIZE}.pkl.gz"
@@ -187,7 +189,8 @@ if env["USE_PREEXISTING_DETM"]:
         )
         # env.CreateMatrices([output_file, output_log], topic_annotations)
         matrices_input = output_file
-        latex_output = "work/tables_${NUMBER_OF_TOPICS}_${MAX_SUBDOC_LENGTH}_${WINDOW_SIZE}.tex"
-        figure_output = "work/temporal_image_${NUMBER_OF_TOPICS}_${MAX_SUBDOC_LENGTH}_${WINDOW_SIZE}.png"
+        latex_output = "work/tables_${NUMBER_OF_TOPICS}_${MAX_SUBDOC_LENGTH}_${WINDOW_SIZE}_${FIGURE_TYPE}.tex"
+        output_log = "create_figures_${NUMBER_OF_TOPICS}_${MAX_SUBDOC_LENGTH}_${WINDOW_SIZE}_${FIGURE_TYPE}.out"
+        figure_output = "work/temporal_image_${NUMBER_OF_TOPICS}_${MAX_SUBDOC_LENGTH}_${WINDOW_SIZE}_${FIGURE_TYPE}.png"
 
-        env.CreateFigures([latex_output, figure_output], matrices_input)
+        env.CreateFigures([latex_output, figure_output, output_log], matrices_input)

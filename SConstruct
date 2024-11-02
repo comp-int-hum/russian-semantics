@@ -5,7 +5,7 @@ from steamroller import Environment, Variables, Builder
 vars: Variables = Variables("custom.py")
 vars.AddVariables(
     # data
-    ("DATA_ROOT", "", "/home/zxia15/russian-semantics/work"),
+    ("DATA_ROOT", "", "/home/zxia15/data_zxia15/russian-semantics/work"),
     ("DOC_DIR", "", "${DATA_ROOT}/stemmed_russian_documents_inuse.jsonl.gz"),
     (
         "EMBEDDING_DIR",
@@ -17,6 +17,7 @@ vars.AddVariables(
     ("USE_PRETRAINED_EMBEDDING", "", False),
     ("USE_PREASSEMBLED_STATS", "", False),
     ("USE_PREEXISTING_DETM", "", False),
+    ("DEBUG_LDA", "", False),
     # embedding & debug vocab params
     ("DEBUG_EMBEDDING_VOCAB", "", False),
     ("USE_PART_OF_DOCS", "", False),
@@ -49,7 +50,7 @@ vars.AddVariables(
     ("BIMODAL_ATTESTATION_LEVEL", "", 1),
     ("RANDOM_SEED", "", 42),
     # create figures params
-    ("FIGURE_TYPE", "", "topic_per_window_dist")
+    ("FIGURE_TYPE", "", "topic_per_window_dist"),
 )
 
 env = Environment(
@@ -95,14 +96,18 @@ env = Environment(
             )
         ),
         "ApplyDETM": Builder(
-            action="CUDA_LAUNCH_BLOCKING=1 TORCH_USE_CUDA_DSA=1 python scripts/apply_detm.py --model ${SOURCES[0]} --input ${SOURCES[1]} --output ${TARGETS[0]}  --log ${TARGETS[1]} --max_subdoc_length ${MAX_SUBDOC_LENGTH} --min_time ${MIN_TIME} --max_time ${MAX_TIME}"
+            action="python scripts/apply_detm.py --model ${SOURCES[0]} --input ${SOURCES[1]} --output ${TARGETS[0]}  --log ${TARGETS[1]} --max_subdoc_length ${MAX_SUBDOC_LENGTH} --min_time ${MIN_TIME} --max_time ${MAX_TIME}"
         ),
-        "CreateMatrices" : Builder(
+        "CreateMatrices": Builder(
             action="python scripts/create_matrices.py --topic_annotations ${SOURCES[0]} --log ${TARGETS[1]} --output ${TARGETS[0]} --window_size ${WINDOW_SIZE} --min_time ${MIN_TIME}"
         ),
-        "CreateFigures" : Builder(
+        "CreateFigures": Builder(
             action="python scripts/create_figures.py --input ${SOURCES[0]} --latex ${TARGETS[0]} --output ${TARGETS[1]} --top_n ${NUM_TOP_WORDS} --log ${TARGETS[2]} --figure_type ${FIGURE_TYPE}"
-        )
+        ),
+        "TrainDebugLDAModel": Builder(
+            action="python scripts/lda_verification_model.py --train ${SOURCES} --log ${TARGETS} --min_time ${MIN_TIME} --max_time ${MAX_TIME} "
+            + "--min_word_occur ${MIN_WORD_OCCURRENCE} --max_doclen ${MAX_SUBDOC_LENGTH} --random_seed ${RANDOM_SEED}"
+        ),
     },
 )
 
@@ -120,10 +125,7 @@ if env["USE_PREASSEMBLED_DATA"] and not env["USE_PREASSEMBLED_STATS"]:
     jsonl_russian_doc_dir = env["DOC_DIR"]
 
     if env["DEBUG_EMBEDDING_VOCAB"]:
-        env.DebugEmbeddingVocab(
-            "work/vocab_freq.csv",
-            jsonl_russian_doc_dir,
-        )
+        env.DebugEmbeddingVocab("work/vocab_freq.csv", jsonl_russian_doc_dir)
 
     embedding_dir = (
         f"work/embeddings/word_2_vec_embeddings_doc{env['NUMBERS_OF_DOC']}.bin"
@@ -143,7 +145,11 @@ if env["USE_PREASSEMBLED_DATA"] and not env["USE_PREASSEMBLED_STATS"]:
         env.GetEmbeddingStats([embedding_dir, stats_dir], jsonl_russian_doc_dir)
 
 
-if env["USE_PREASSEMBLED_STATS"] and not env["USE_PREEXISTING_DETM"]:
+if (
+    env["USE_PREASSEMBLED_STATS"]
+    and not env["USE_PREEXISTING_DETM"]
+    and not env["DEBUG_LDA"]
+):
     embeddings_dir = env["EMBEDDING_DIR"]
     jsonl_russian_doc_dir = env["DOC_DIR"]
 
@@ -184,9 +190,7 @@ if env["USE_PREEXISTING_DETM"]:
         # env.ApplyDETM([output_file, output_log], [model_file, jsonl_russian_doc_dir])
         topic_annotations = output_file
         output_file = "work/matrices_${NUMBER_OF_TOPICS}_${MAX_SUBDOC_LENGTH}_${WINDOW_SIZE}.pkl.gz"
-        output_log = (
-            f"create_matrices_{env['MIN_TIME']}_{env['MAX_TIME']}_Epoch_{env['EPOCHS']}.out"
-        )
+        output_log = f"create_matrices_{env['MIN_TIME']}_{env['MAX_TIME']}_Epoch_{env['EPOCHS']}.out"
         # env.CreateMatrices([output_file, output_log], topic_annotations)
         matrices_input = output_file
         latex_output = "work/tables_${NUMBER_OF_TOPICS}_${MAX_SUBDOC_LENGTH}_${WINDOW_SIZE}_${FIGURE_TYPE}.tex"
@@ -194,3 +198,10 @@ if env["USE_PREEXISTING_DETM"]:
         figure_output = "work/temporal_image_${NUMBER_OF_TOPICS}_${MAX_SUBDOC_LENGTH}_${WINDOW_SIZE}_${FIGURE_TYPE}.png"
 
         env.CreateFigures([latex_output, figure_output, output_log], matrices_input)
+
+if env["DEBUG_LDA"]:
+    jsonl_russian_doc_dir = env["DOC_DIR"]
+    output_log = (
+        f"debug_lda_{env['MIN_TIME']}_{env['MAX_TIME']}_Epoch_{env['EPOCHS']}.out"
+    )
+    env.TrainDebugLDAModel(output_log, jsonl_russian_doc_dir)

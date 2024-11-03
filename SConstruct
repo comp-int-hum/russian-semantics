@@ -5,7 +5,7 @@ from steamroller import Environment, Variables, Builder
 vars: Variables = Variables("custom.py")
 vars.AddVariables(
     # data
-    ("DATA_ROOT", "", "/home/zxia15/data_zxia15/russian-semantics/work"),
+    ("DATA_ROOT", "", "/home/zxia15/russian-semantics/work"),
     ("DOC_DIR", "", "${DATA_ROOT}/stemmed_russian_documents_inuse.jsonl.gz"),
     (
         "EMBEDDING_DIR",
@@ -106,7 +106,7 @@ env = Environment(
         ),
         "TrainDebugLDAModel": Builder(
             action="python scripts/lda_verification_model.py --train ${SOURCES} --log ${TARGETS} --min_time ${MIN_TIME} --max_time ${MAX_TIME} "
-            + "--min_word_occur ${MIN_WORD_OCCURRENCE} --max_doclen ${MAX_SUBDOC_LENGTH} --random_seed ${RANDOM_SEED}"
+            + "--min_word_occur ${MIN_WORD_OCCURRENCE} --max_doclen 5000 --random_seed ${RANDOM_SEED}"
         ),
     },
 )

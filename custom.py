@@ -8,3 +8,5 @@ USE_PREASSEMBLED_STATS = True
 USE_SBATCH = False
 USE_PREEXISTING_DETM = False
 DEBUG_LDA = True
+
+FIGURE_TYPE = "dist_divergence"

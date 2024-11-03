@@ -11,12 +11,6 @@ from pairtree import PairtreeStorageFactory
 import fasttext
 from huggingface_hub import hf_hub_download
 
-
-
-
-#print(model.predict(["test", "Hello, world!"]))
-#sys.exit()
-
 logger = logging.getLogger("populate_hathitrust")
 
 

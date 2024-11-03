@@ -57,6 +57,7 @@ if __name__ == "__main__":
     parser.add_argument("--output", dest="output", help="Output file")
     parser.add_argument("--log", dest="log")
     parser.add_argument("--top_n", dest="top_n", type=int, default=8)
+    parser.add_argument("--topics_per_plot", dest="topics_per_plot", type=int, default=2)
     parser.add_argument("--step_size", dest="step_size", type=int, default=1)
     parser.add_argument("--temporal_image", dest="temporal_image", help="Output file")
     parser.add_argument("--latex", dest="latex", help="Output file")
@@ -175,6 +176,82 @@ if __name__ == "__main__":
 
         plt.tight_layout()
         plt.savefig(args.output)
+    if args.figure_type == "dist_divergence":
+        # try implementing KL divergence and genet divergence
+
+        # step 1: get the distribution of word per topic for each time
+        # shape of word_win_topic: (87504, 5, 20)
+        word_win_topic_sum_per_time_per_topic = word_win_topic.sum(axis=0)
+        word_win_topic_dist = word_win_topic / word_win_topic_sum_per_time_per_topic
+        divergence_arr = numpy.zeros((3, 4, 20))
+        epsilon = 1e-10
+
+        # for each topic for each time interval, get the KL divergence and the genet divergence
+        for topic_idx in range(word_win_topic.shape[2]):
+            for time_idx in range(word_win_topic.shape[1] - 1):
+                time_p, time_q = time_idx, time_idx + 1
+
+                # KL(P || Q) =  sum x in X P(x) * log(P(x) / Q(x))
+                p_x = word_win_topic_dist[:, time_p, topic_idx]
+                q_x = word_win_topic_dist[:, time_q, topic_idx]
+                p_x = numpy.clip(p_x, epsilon, 1)
+                q_x = numpy.clip(q_x, epsilon, 1)
+
+                # forward
+                divergence_arr[0, time_p, topic_idx] = numpy.sum(p_x * numpy.log(p_x / q_x))
+                # backward
+                divergence_arr[1, time_p, topic_idx] = numpy.sum(q_x * numpy.log(q_x / p_x))
+
+                # JS(P || Q) = 1/2 KL(P || M) + 1/2 KL(Q || M)
+                # where M = 1/2 (P + Q)
+                m_x = (p_x + q_x) / 2
+                m_x = numpy.clip(m_x, epsilon, 1)
+                divergence_arr[2, time_p, topic_idx] = numpy.sum(p_x * numpy.log(p_x / m_x)) / 2 + numpy.sum(q_x * numpy.log(q_x / m_x)) / 2
+        
+        logger.info(divergence_arr)
+
+        reshaped_array = divergence_arr.reshape(12, 20)
+        indexed_array = numpy.column_stack((numpy.repeat(numpy.arange(3), 4), reshaped_array))
+        numpy.savetxt("output.csv", indexed_array, delimiter=",", header="divergence+idx, " + ", ".join([f"topic #{idx}" for idx in range(20)]))
+    
+        # create graphs
+        time_intervals = numpy.arange(1, 5)  # 4 time intervals
+        cmap = plt.get_cmap('tab10')  # Just use one argument here
+        colors = [cmap(i % cmap.N) for i in range(20)]
+
+        for i in range(20 // args.topics_per_plot):  # 4 plots, each with 5 topics
+            plt.figure(figsize=(10, 6))
+
+            scaled_divergence = [(divergence_arr[fb_idx, :, topic_idx] - divergence_arr[fb_idx, :, topic_idx].min()) / (divergence_arr[fb_idx, :, topic_idx].max() - divergence_arr[fb_idx, :, topic_idx].min() + epsilon) for topic_idx in range(20) for fb_idx in range(2)]
+    
+            for j in range(args.topics_per_plot):
+                topic_idx = i * args.topics_per_plot + j
+                plt.plot(time_intervals, scaled_divergence[topic_idx * 2], label=f"Topic {topic_idx + 1} DL Forward", linestyle='-', linewidth=1.5, color=colors[topic_idx])
+                plt.plot(time_intervals, scaled_divergence[topic_idx * 2 + 1], label=f"Topic {topic_idx + 1} DL Backward", linestyle=':', linewidth=1.5, color=colors[topic_idx])
+                plt.plot(time_intervals, divergence_arr[2, :, topic_idx], label=f"Topic {topic_idx + 1} JS", linestyle='-.', linewidth=1.5, color=colors[topic_idx])
+            
+            plt.xlabel("Time Interval")
+            plt.ylabel("Divergence Value")
+            plt.title(f"Topics {i * args.topics_per_plot + 1} to {(i + 1) * args.topics_per_plot} KL & JS Divergence")
+            plt.legend()
+            plt.grid(True)
+            plt.savefig(f"images/topics_{i * args.topics_per_plot + 1}_to_{(i + 1) * args.topics_per_plot}_KL_&_JS_divergence.png")
+
+            plt.figure(figsize=(10, 6))
+    
+            for j in range(args.topics_per_plot):
+                topic_idx = i * args.topics_per_plot + j
+                plt.plot(time_intervals, divergence_arr[0, :, topic_idx], label=f"Topic {topic_idx + 1} DL Forward", linestyle='-', linewidth=1.5, color=colors[topic_idx])
+                plt.plot(time_intervals, divergence_arr[1, :, topic_idx], label=f"Topic {topic_idx + 1} DL Backward", linestyle=':', linewidth=1.5, color=colors[topic_idx])
+                # plt.plot(time_intervals, divergence_arr[2, :, topic_idx], label=f"Topic {topic_idx + 1} JS", linestyle='-.', linewidth=1.5, color=colors[topic_idx])
+            
+            plt.xlabel("Time Interval")
+            plt.ylabel("Divergence Value")
+            plt.title(f"Topics {i * args.topics_per_plot + 1} to {(i + 1) * args.topics_per_plot} KL Divergence")
+            plt.legend()
+            plt.grid(True)
+            plt.savefig(f"images/topics_{i * args.topics_per_plot + 1}_to_{(i + 1) * args.topics_per_plot}_KL_divergence.png")
+
 
     if args.figure_type == "default":
         win_topic = word_win_topic.sum(0)

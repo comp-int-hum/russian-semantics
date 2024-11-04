@@ -1,24 +1,11 @@
-import argparse
-import math
-import gzip
-import json
-import sys
-import warnings
-import pickle
-import logging
+import argparse, gzip, warnings, pickle, logging, numpy, ruptures, requests
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
-from matplotlib.axes import Axes
-from matplotlib.gridspec import GridSpec
-from matplotlib import colormaps
-import numpy
-from scipy.spatial.distance import cosine, jensenshannon
-from scipy.stats import entropy
-import ruptures
-#from googletrans import Translator
-from translate import Translator
-from train_embeddings_and_generate_stats import get_translate_untranslate_tuple
-import requests
+from scipy.spatial.distance import jensenshannon
+
+
+# used for matrix division
+EPSILON = 1e-10
 
 logger = logging.getLogger("create_figures")
 
@@ -64,7 +51,6 @@ if __name__ == "__main__":
     parser.add_argument("--figure_type", dest="figure_type", default="default")
     args = parser.parse_args()
 
-    translator = Translator(to_lang="en", from_lang="ru")
     logging.basicConfig(
         level=logging.INFO,
         filename=args.log,
@@ -105,27 +91,20 @@ if __name__ == "__main__":
 
     # each window's distribution over topics
     if args.figure_type == "topic_top_titles":
-        # each word htid's distribution over topics
-        htid_topic_argmax = numpy.argmax(htid_win_topic, axis=1)
-        one_hot_matrix = numpy.zeros(htid_win_topic.shape)
-        one_hot_matrix[numpy.arange(htid_topic_argmax.shape[0])[:, None], 
-                       htid_topic_argmax, 
-                       numpy.arange(htid_topic_argmax.shape[1])] = 1
-        htid_topic_dist = htid_win_topic.sum(1)
-        htid_topic_dist = (htid_topic_dist.T / htid_topic_dist.sum(1)).T
-        htid_topic_dist_reshaped = htid_topic_dist[:, None, :]
-        htid_topic_original_shape = htid_topic_dist_reshaped * one_hot_matrix
-        
-        # logger.info(f"shape of htid_win_topic: {htid_win_topic.shape}")
-        # logger.info(f"shape of htid_topic_dist: {htid_topic_dist.shape}")
-        # logger.info(f"first row of htid_topic_dist: {htid_topic_dist[0, :]}")
-        # logger.info(f"shape of htid_topic_dist_w_year: {htid_topic_original_shape.shape}")
-        # logger.info(f"first row of htid_topic_dist_w_year: {htid_topic_original_shape[0, :, :]}")
+        # 1. distribution of the topic per work
+        # htid_win_topic has original shape (num_htid, 5, 20)
+        # htid_win_topic.sum(2) has shape: (num_htid, 5)
+        htid_topic_dist = (htid_win_topic.transpose(2, 0, 1) / (htid_win_topic.sum(2) + EPSILON)).transpose(1, 2, 0)
+    
+        # 2. proportion of the work in single topic
+        # htid_win_topic has original shape (num_htid, 5, 20)
+        # htid_win_topic.sum(0) has shape: (5, 20)
+        htid_topic_prop = htid_win_topic / (htid_win_topic.sum(0) + EPSILON)
 
-        # per topic per time
+        logging.info(f"Work ranked by their proportion in single topic: ")
         for topic_idx in range(20):
             for temp_idx in range(5):
-                score_per_topic_per_time = htid_topic_original_shape[:, temp_idx, topic_idx]
+                score_per_topic_per_time = htid_topic_prop[:, temp_idx, topic_idx]
                 top_n_indices = numpy.argsort(score_per_topic_per_time)[-args.top_n:][::-1]
                 top_n_htids = score_per_topic_per_time[top_n_indices]
 
@@ -137,7 +116,8 @@ if __name__ == "__main__":
         
         # only per topic
         for topic_idx in range(20):
-            score_per_topic = htid_topic_dist[:, topic_idx]
+            # summing over the time axis
+            score_per_topic = (htid_topic_prop.sum(1))[:, topic_idx]
             top_n_indices = numpy.argsort(score_per_topic)[-args.top_n:][::-1]
             top_n_htids = score_per_topic[top_n_indices]
 
@@ -146,6 +126,95 @@ if __name__ == "__main__":
                 logging.info(f"score {top_n_htids[idx]}; idx {idx}; htid {id2htid[top_n_indices[idx]]}")
                 
             logging.info("\n")
+        
+        logging.info(f"Work ranked by the topic's proportion in their work: ")
+        for topic_idx in range(20):
+            for temp_idx in range(5):
+                score_per_topic_per_time = htid_topic_dist[:, temp_idx, topic_idx]
+                top_n_indices = numpy.argsort(score_per_topic_per_time)[-args.top_n:][::-1]
+                top_n_htids = score_per_topic_per_time[top_n_indices]
+
+                logging.info(f"Top {args.top_n} for topic #{topic_idx} time {1850 + temp_idx * 10}: ")
+                for idx in range(args.top_n):
+                    logging.info(f"score {top_n_htids[idx]}; idx {idx}; htid {id2htid[top_n_indices[idx]]}")
+                
+                logging.info("\n")
+        
+        # only per topic
+        for topic_idx in range(20):
+            # summing over the time axis
+            score_per_topic = (htid_topic_dist.sum(1))[:, topic_idx]
+            top_n_indices = numpy.argsort(score_per_topic)[-args.top_n:][::-1]
+            top_n_htids = score_per_topic[top_n_indices]
+
+            logging.info(f"Top {args.top_n} for topic #{topic_idx}:")
+            for idx in range(args.top_n):
+                logging.info(f"score {top_n_htids[idx]}; idx {idx}; htid {id2htid[top_n_indices[idx]]}")
+                
+            logging.info("\n")
+
+    if args.figure_type == "topic_top_authors":
+        # 1. distribution of the topic per work
+        # htid_win_topic has original shape (num_htid, 5, 20)
+        # htid_win_topic.sum(2) has shape: (num_htid, 5)
+        auth_topic_dist = (auth_win_topic.transpose(2, 0, 1) / (auth_win_topic.sum(2) + EPSILON)).transpose(1, 2, 0)
+    
+        # 2. proportion of the work in single topic
+        # htid_win_topic has original shape (num_htid, 5, 20)
+        # htid_win_topic.sum(0) has shape: (5, 20)
+        auth_topic_prop = auth_win_topic / (auth_win_topic.sum(0) + EPSILON)
+
+        # per topic per time
+        logging.info(f"Auth ranked by their proportion in single topic: ")
+        for topic_idx in range(20):
+            for temp_idx in range(5):
+                score_per_topic_per_time = auth_topic_prop[:, temp_idx, topic_idx]
+                top_n_indices = numpy.argsort(score_per_topic_per_time)[-args.top_n:][::-1]
+                top_n_authors = score_per_topic_per_time[top_n_indices]
+
+                logging.info(f"Top {args.top_n} for topic #{topic_idx} time {1850 + temp_idx * 10}: ")
+                for idx in range(args.top_n):
+                    logging.info(f"score {top_n_authors[idx]}; idx {idx}; author {id2author[top_n_indices[idx]]}")
+                
+                logging.info("\n")
+        
+        # only per topic
+        for topic_idx in range(20):
+            score_per_topic = (auth_topic_prop.sum(1))[:, topic_idx]
+            top_n_indices = numpy.argsort(score_per_topic)[-args.top_n:][::-1]
+            top_n_authors = score_per_topic[top_n_indices]
+
+            logging.info(f"Top {args.top_n} for topic #{topic_idx}:")
+            for idx in range(args.top_n):
+                logging.info(f"score {top_n_authors[idx]}; idx {idx}; author {id2author[top_n_indices[idx]]}")
+                
+            logging.info("\n")
+
+        logging.info(f"Auth ranked by the topic's proportion in their work: ")
+        for topic_idx in range(20):
+            for temp_idx in range(5):
+                score_per_topic_per_time = auth_topic_dist[:, temp_idx, topic_idx]
+                top_n_indices = numpy.argsort(score_per_topic_per_time)[-args.top_n:][::-1]
+                top_n_authors = score_per_topic_per_time[top_n_indices]
+
+                logging.info(f"Top {args.top_n} for topic #{topic_idx} time {1850 + temp_idx * 10}: ")
+                for idx in range(args.top_n):
+                    logging.info(f"score {top_n_authors[idx]}; idx {idx}; author {id2author[top_n_indices[idx]]}")
+                
+                logging.info("\n")
+        
+        # only per topic
+        for topic_idx in range(20):
+            score_per_topic = (auth_topic_dist.sum(1))[:, topic_idx]
+            top_n_indices = numpy.argsort(score_per_topic)[-args.top_n:][::-1]
+            top_n_authors = score_per_topic[top_n_indices]
+
+            logging.info(f"Top {args.top_n} for topic #{topic_idx}:")
+            for idx in range(args.top_n):
+                logging.info(f"score {top_n_authors[idx]}; idx {idx}; author {id2author[top_n_indices[idx]]}")
+                
+            logging.info("\n")
+
     if args.figure_type == "topic_per_window_dist":
         # sum up all the words over every window
         per_window_topic_dist = htid_win_topic.sum(0)

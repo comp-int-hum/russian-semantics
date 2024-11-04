@@ -50,7 +50,7 @@ vars.AddVariables(
     ("BIMODAL_ATTESTATION_LEVEL", "", 1),
     ("RANDOM_SEED", "", 42),
     # create figures params
-    ("FIGURE_TYPE", "", "topic_per_window_dist"),
+    ("FIGURE_TYPE", "", "topic_top_titles"),
 )
 
 env = Environment(
@@ -189,7 +189,7 @@ if env["USE_PREEXISTING_DETM"]:
         slurm_file = f"apply_detm_{env['MIN_TIME']}_{env['MAX_TIME']}.sh"
         # env.ApplyDETM([output_file, output_log], [model_file, jsonl_russian_doc_dir])
         topic_annotations = output_file
-        output_file = "work/matrices_${NUMBER_OF_TOPICS}_${MAX_SUBDOC_LENGTH}_${WINDOW_SIZE}.pkl.gz"
+        output_file = f"work/matrices_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}.pkl.gz"
         output_log = f"create_matrices_{env['MIN_TIME']}_{env['MAX_TIME']}_Epoch_{env['EPOCHS']}.out"
         # env.CreateMatrices([output_file, output_log], topic_annotations)
         matrices_input = output_file

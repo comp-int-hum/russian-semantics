@@ -5,6 +5,8 @@ pandas
 ruptures
 googletrans
 translate
+transliterate
+graphviz
 streamlit
 pairtree
 fasttext

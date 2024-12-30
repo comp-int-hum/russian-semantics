@@ -6,11 +6,11 @@ vars: Variables = Variables("custom.py")
 vars.AddVariables(
     # data
     ("DATA_ROOT", "", "/home/zxia15/russian-semantics/work"),
-    ("DOC_DIR", "", "${DATA_ROOT}/stemmed_russian_documents_inuse.jsonl.gz"),
+    ("DOC_DIR", "", "${DATA_ROOT}/12_24_stemmed_metadata_with_full_text.jsonl.gz"),
     (
         "EMBEDDING_DIR",
         "",
-        "${DATA_ROOT}/embeddings/7500_stemmed_data/word_2_vec_embeddings.bin",
+        "${DATA_ROOT}/stemmed_embeddings/word_2_vec_embeddings.bin",
     ),
     # Running status
     ("USE_PREASSEMBLED_DATA", "", False),
@@ -29,10 +29,10 @@ vars.AddVariables(
     ("NUM_TOP_WORDS", "", 8),
     ("MIN_WORD_OCCURRENCE", "", 100),
     ("MAX_WORD_PROPORTION", "", 0.7),
-    ("MIN_TIME", "", 1850),
-    ("MAX_TIME", "", 1900),
+    ("MIN_TIME", "", 1775),
+    ("MAX_TIME", "", 1800),
     ("NUMBER_OF_TOPICS", "", 20),
-    ("WINDOW_SIZE", "", 10),
+    ("WINDOW_SIZE", "", 5),
     ("MAX_SUBDOC_LENGTH", "", 500),
     ("CHUNK_SIZE", "", [500]),
     ("USE_GRID", "", 1),
@@ -41,7 +41,7 @@ vars.AddVariables(
     ("LIMIT_SPLITS", "", None),
     ("GPU_ACCOUNT", "", "tlippin1_gpu"),
     ("GPU_QUEUE", "", "a100"),
-    ("BATCH_SIZE", "", 256),  # 2048?
+    ("BATCH_SIZE", "", 64),  # 2048?
     ("EPOCHS", "", 200),
     ("LEARNING_RATES", "", [0.015]),
     # ("LEARNING_RATES", "", [0.1, 0.05, 0.015]),
@@ -135,7 +135,7 @@ if env["USE_PREASSEMBLED_DATA"] and not env["USE_PREASSEMBLED_STATS"]:
     stats_dir = (
         f"images/embedding_similarity_table_doc{env['NUMBERS_OF_DOC']}.png"
         if env["USE_PART_OF_DOCS"] and type(env["NUMBERS_OF_DOC"]) == int
-        else "images/embedding_stemmed_similarity_table.png"
+        else "images/embedding_stemmed_no_punc_similarity_table.png"
     )
 
     if not env["USE_PRETRAINED_EMBEDDING"]:
@@ -155,8 +155,8 @@ if (
 
     for idx in range(len(env["LEARNING_RATES"])):
 
-        output_file = f"work/detm_model_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['LR_IDENTIFIERS'][idx]}_{env['EPOCHS']}.bin"
-        output_log = f"traim_detm_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['LR_IDENTIFIERS'][idx]}_{env['EPOCHS']}.out"
+        output_file = f"work/detm_model_{env['MIN_TIME']}-{env['MAX_TIME']}_topics_{env['NUMBER_OF_TOPICS']}_sublen_{env['MAX_SUBDOC_LENGTH']}_widsize_{env['WINDOW_SIZE']}_lr_{env['LR_IDENTIFIERS'][idx]}_epoch_{env['EPOCHS']}.bin"
+        output_log = f"train_detm_{env['MIN_TIME']}-{env['MAX_TIME']}_topics_{env['NUMBER_OF_TOPICS']}_sublen_{env['MAX_SUBDOC_LENGTH']}_widsize_{env['WINDOW_SIZE']}_lr_{env['LR_IDENTIFIERS'][idx]}_epoch_{env['EPOCHS']}.out"
         slurm_file = f"train_detm_{env['LR_IDENTIFIERS'][idx]}.sh"
         if not env["USE_SBATCH"]:
             env.TrainDETM(
@@ -193,9 +193,9 @@ if env["USE_PREEXISTING_DETM"]:
         output_log = f"create_matrices_{env['MIN_TIME']}_{env['MAX_TIME']}_Epoch_{env['EPOCHS']}.out"
         # env.CreateMatrices([output_file, output_log], topic_annotations)
         matrices_input = output_file
-        latex_output = "work/tables_${NUMBER_OF_TOPICS}_${MAX_SUBDOC_LENGTH}_${WINDOW_SIZE}_${FIGURE_TYPE}.tex"
-        output_log = "create_figures_${NUMBER_OF_TOPICS}_${MAX_SUBDOC_LENGTH}_${WINDOW_SIZE}_${FIGURE_TYPE}.out"
-        figure_output = "work/temporal_image_${NUMBER_OF_TOPICS}_${MAX_SUBDOC_LENGTH}_${WINDOW_SIZE}_${FIGURE_TYPE}.png"
+        latex_output = f"work/tables_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['FIGURE_TYPE']}.tex"
+        output_log = f"create_figures_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['FIGURE_TYPE']}.out"
+        figure_output = f"work/temporal_image_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['FIGURE_TYPE']}.png"
 
         env.CreateFigures([latex_output, figure_output, output_log], matrices_input)
 

@@ -1,4 +1,5 @@
-import gzip, json, argparse, re
+import gzip, json, argparse, requests, re
+from nltk.stem.snowball import SnowballStemmer
 from typing import Dict, List, Tuple, Any
 
 from gensim.models import Word2Vec
@@ -26,6 +27,26 @@ def get_translate_untranslate_tuple(
         # exit(0)
         return rus_word
     return f"{rus_word}({eng_word})"
+
+
+def translate_text_deepl(text, target_lang='EN'):
+    api_key = '0e1ffe54-80c7-462d-9bac-b2962074ba50:fx'
+    url = 'https://api-free.deepl.com/v2/translate'
+    
+    data = {
+        'auth_key': api_key,
+        'text': text,
+        'target_lang': target_lang
+    }
+
+    response = requests.post(url, data=data)
+    if response.status_code == 200:
+        result = response.json()
+        translation = result['translations'][0]['text']
+        return f"{text}({translation})"
+    else:
+        print(f"Error: {response.status_code}, {response.text}")
+        return text
 
 
 def graph_tabular_data(
@@ -87,6 +108,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     assert args.input and args.model_output and args.stats_output
+    is_stemmed = re.search(r"stemmed", args.input) is not None
+    assert is_stemmed is True
 
     if args.skip_model is False:
 
@@ -101,7 +124,7 @@ if __name__ == "__main__":
 
             for entry in tqdm(ifd):
                 j = json.loads(entry)
-                sentences.append(j["content"].split())
+                sentences.append(j["text"].split())
                 idx_counter += 1
 
                 if args.num_docs is not None and args.num_docs > 0 and args.num_docs <= idx_counter:
@@ -148,6 +171,10 @@ if __name__ == "__main__":
         "Тело",  # body
     ]
 
+    if is_stemmed:
+        stemmer = SnowballStemmer("russian")
+        words_of_interest = [stemmer.stem(word) for word in words_of_interest]
+
     translator = Translator()
 
     full_interest_table_data: Dict[str, List[str]] = {
@@ -166,7 +193,7 @@ if __name__ == "__main__":
         try:
 
             woi: str = woi.lower()
-            translated_tuple_woi: str = get_translate_untranslate_tuple(woi, translator)
+            translated_tuple_woi: str = translate_text_deepl(woi)
             print(
                 f" ----- getting similarity matrix of word {translated_tuple_woi} ----- "
             )
@@ -175,7 +202,7 @@ if __name__ == "__main__":
             )
             sims_modified: List[str] = [
                 (
-                    get_translate_untranslate_tuple(w, translator)
+                    translate_text_deepl(w)
                     + "\n"
                     + str(float(int(f * 1000)) / 1000.0)
                 )

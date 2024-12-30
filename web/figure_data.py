@@ -1,20 +1,22 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import json
 
 
 st.title("Simple Data Dashboard")
 
-file_dir = 'work/topic_divergence_data.csv'
-df = pd.read_csv(file_dir)
-
-# # let's restore the numpy array!
-data_values = df.drop(columns=["divergence", " year"], axis=1).values
-divergence_arr = data_values.reshape(3, 4, 20)
-
-visualize_option = st.radio("What information do you want to look at: ", ["None Placeholder", "Vocabulary Distribution Changes"])
+visualize_option = st.radio("What information do you want to look at: ", ["None Placeholder", "Vocabulary Distribution Changes", "Evolution Timeline"])
 
 if visualize_option == "Vocabulary Distribution Changes":
+
+    file_dir = '/home/zxia15/russian-semantics/work/topic_divergence_data.csv'
+    df = pd.read_csv(file_dir)
+
+    # # let's restore the numpy array!
+    data_values = df.drop(columns=["divergence", " year"], axis=1).values
+    divergence_arr = data_values.reshape(3, 4, 20)
+
     time_intervals = ["1850-60", "1860-70", "1870-80", "1880-1890"]
     topic_display_option = st.radio("Topic Display: ", ["single topic", "cross-topic comparison"])
 
@@ -98,3 +100,60 @@ if visualize_option == "Vocabulary Distribution Changes":
             ax.grid(True)
 
             st.pyplot(fig)
+
+elif visualize_option == "Evolution Timeline":
+
+    with open('/home/zxia15/russian-semantics/work/all_topic_notes.json', 'r', encoding='utf-8') as f:
+        all_topic_notes = json.load(f)
+
+    topic_spec = [
+        "different modalities / causality; logical quantification",
+        "measurement: monetary: military -> relation -> objects of measurement -> numerical"
+        "legal and letters",
+        "livelihood: potentially gentry -> village",
+        "scientific cataloging: linguistics / text -> religion / monarch -> political parties",
+        "religious authority -> state authority -> monetary units and numbers",
+        "logical connection -> spacial relation -> body parts",
+        "unclear",
+        "numerical system -> statehood, military",
+        "peasantry, authority -> political parties and other terminologies -> unclear (last 2)",
+        "unclear",
+        "unclear",
+        "speech: body parts -> addresses -> more formal speaker and political speech",
+        "unclear -> history, language -> state, military -> unclear -> religion",
+        "unclear",
+        "personal info (appearance, name) -> location -> time -> relation (spatial, requential, logical, numerical)",
+        "state -> religion -> unclear (last 3)",
+        "unclear -> speech, time -> name, appearance -> linguistic, Russia -> publication",
+        "unclear",
+        "quantity, numerical system -> monetary and military -> statehood"
+    ]
+
+    filtered_topic = [f"Topic #{topic_idx}: {topic_text}" for topic_idx, topic_text in enumerate(topic_spec) if topic_text != "unclear"]
+    topic_choice = st.selectbox(
+        "Please input topic number", filtered_topic, index=None)
+    if topic_choice is None:
+        st.write("Please input a valid topic number")
+    else:
+        topic_idx = int((topic_choice.split(": ")[0]).split("#")[-1])
+        txt = st.text_area(
+        "Notes on this topic",
+        all_topic_notes[str(topic_idx)],
+        height=50
+        )
+        
+        if st.button("Save", type="primary"):
+        
+            if len(txt) > 0:
+                all_topic_notes[str(topic_idx)] = txt
+                with open('/home/zxia15/russian-semantics/work/all_topic_notes.json', 'w', encoding='utf-8') as f:
+                    json.dump(all_topic_notes, f, indent=4)
+
+        # visualize_option = st.radio("Choose the statistics: ", ["Proportion within a single Topic", "Distribution of topic within all appearance"])
+        
+        # key_word = "dist" if visualize_option == "Distribution of topic within all appearance" else "prop"
+
+        # author_image_dir = f"/home/zxia15/russian-semantics/images/topic#{topic_idx}_top_{key_word}_authors.png"
+        # work_image_dir = f"/home/zxia15/russian-semantics/images/topic#{topic_idx}_top_{key_word}_works.png"
+
+        st.image(f"/home/zxia15/russian-semantics/images/topic#{topic_idx}_combined.jpg")

@@ -284,11 +284,10 @@ class DETM(torch.nn.Module):
     def get_nll(self, theta, beta, bows, is_train=True):
         theta = theta.unsqueeze(1)  
         lik = torch.bmm(theta, beta).squeeze(1) 
-
         # TODO: I think conceptually they should be the same but I put it there
         # if is_train:
         #     theta = theta.unsqueeze(1)  
-        #     lik = torch.bmm(theta, beta).squeeze(1) 
+        #     lik = torch.bmm(theta, beta).squeeze(1)
         # else:
         #     lik = (theta.unsqueeze(2) * beta).sum(1) 
 
@@ -297,8 +296,12 @@ class DETM(torch.nn.Module):
         nll = nll.sum(-1) 
         return nll
 
+    def get_lik(self, theta, beta):
+        lik = theta.unsqueeze(2) * beta
+        return lik
+
     def forward(self, bows, normalized_bows, times, rnn_inp, 
-                num_docs=None, is_train=True):
+                num_docs=None, is_train=True, get_lik = False):
         
         if is_train:
             bsz = normalized_bows.size(0)
@@ -325,8 +328,12 @@ class DETM(torch.nn.Module):
         else:
             beta = self.get_beta(alpha[:, times.type("torch.LongTensor"), :])
             beta = beta.permute(1, 0, 2) 
+        
+        if get_lik:
+            lik = self.get_lik(theta, beta)
+            return lik
 
-        nll = self.get_nll(theta, beta, bows, is_train=is_train)
+        nll, lik = self.get_nll(theta, beta, bows, is_train=is_train)
 
         if is_train:
             nll = nll.sum() * coeff

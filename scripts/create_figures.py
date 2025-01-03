@@ -360,7 +360,7 @@ if __name__ == "__main__":
                     words.append((cpd, cp, modalities.mean(), modalities.std(), id2word[i], word_counts[i]))
                     #print(id2word[i], word_counts[i])
 
-        with open(args.latex, "wt") as latex_ofd, open(args.temporal_image, "wb") as temporal_image_ofd:
+        with open(args.latex, "wt") as latex_ofd, open(args.output, "wb") as temporal_image_ofd:
 
             width = 12
             height = 6

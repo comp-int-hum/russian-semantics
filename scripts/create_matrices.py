@@ -30,10 +30,12 @@ if __name__ == "__main__":
     with gzip.open(args.topic_annotations, "rt") as ifd:
         for i, line in enumerate(ifd):
             j = json.loads(line)
+            # logger.info(j.keys())
+            # exit(0)
             title = j["title"]
             author = j["author"]
             year = j["time"]
-            num = j["num"]
+            # num = j["subdoc_number"]
             htid = j["htid"]
             doc2title[htid] = title
             doc2author[htid] = author
@@ -42,7 +44,7 @@ if __name__ == "__main__":
             docs[htid].append(j)
             unique_times.add(year)
             unique_authors.add(author)
-            for w, t in j["text"]:
+            for w, t in j["tokens"]:
                 if t != None:
                     unique_words.add(w)
                     unique_topics.add(t)
@@ -103,7 +105,7 @@ if __name__ == "__main__":
         did = htid2id[htid]
         
         for subdoc in subdocs:
-            for word, topic in subdoc["text"]:
+            for word, topic in subdoc["tokens"]:
                 if topic != None:
                     wid = word2id[word]
                     words_wins_topics[wid, win, topic] += 1

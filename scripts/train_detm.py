@@ -157,7 +157,7 @@ if __name__ == "__main__":
             
             try:
                 while True:
-                    eval_data_batch, eval_normalized_data_batch, eval_times_batch = next(eval_batch_generator)
+                    eval_data_batch, eval_normalized_data_batch, eval_times_batch, _ = next(eval_batch_generator)
                     detm_model(eval_data_batch, eval_normalized_data_batch, 
                                eval_times_batch, rnn_input["eval"], 
                                is_train=False)

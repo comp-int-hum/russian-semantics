@@ -9,15 +9,16 @@ class CustomDataloader:
         
         self.min_time = args.min_time if args.min_time else 0
         self.max_time = args.max_time if args.max_time else 2000
-        self.window_size = args.window_size
         self.random_seed = args.random_seed
-        self.device = args.device
+        self.window_size = args.window_size
         self.batch_size = args.batch_size
-        self.batch_preprocess = args.batch_preprocess
         self.eval_batch_size = args.eval_batch_size
+        self.batch_preprocess = args.batch_preprocess
+        self.device = args.device
         self.max_subdoc_length = args.max_subdoc_length
         self.min_word_occurrence = args.min_word_occurrence
         self.max_word_proportion = args.max_word_proportion
+        self.epoch = 0
 
         self.all_window_ranges = [f"{self.min_time + idx * self.window_size}-" + 
                                   f"{self.min_time + (idx + 1) * self.window_size if self.min_time + (idx + 1) * self.window_size <= self.max_time else self.max_time}" 
@@ -34,6 +35,7 @@ class CustomDataloader:
             time_intereval_key = self.all_window_ranges[(time - self.min_time) // self.window_size]
             title = j["title"]
             author = j["author_info"]
+            htid = j['htid']
             docs = j["text"].split()
 
             num_subdocs = math.ceil(len(docs) / self.max_subdoc_length)
@@ -48,6 +50,7 @@ class CustomDataloader:
                                  "tokens": subdoc,
                                  "title": title,
                                  "author": author,
+                                 'htid': htid,
                                  "subdoc_number": subdoc_num,
                                  'window': time_intereval_key,
                                  'window_idx': (time - self.min_time) // self.window_size
@@ -61,7 +64,8 @@ class CustomDataloader:
                     data['train'].setdefault(time_intereval_key, [])
                     data['train'][time_intereval_key].append(data_instance)
 
-    def preprocess_data(self, train_dir, eval_dir, train_proportion):
+    def preprocess_data(self, train_dir, eval_dir, train_proportion, 
+                        id2token=None, token2id=None):
 
         self.logger.info(f"----- starts preprocessing data ----- ")
 
@@ -90,11 +94,17 @@ class CustomDataloader:
         self.logger.info(f"train counter:\n {train_counter}", )
         self.logger.info(f"evalidation counter:\n {eval_counter}")
 
-        vocab_to_keep = self.filter_vocabs_to_keep(token2subdoccount)
-        id2token = self.filter_windows_to_keep(data, vocab_to_keep)
-        rnn_input = self.get_rnn(id2token)
+        if not id2token or not token2id:
+            vocab_to_keep = self.filter_vocabs_to_keep(token2subdoccount)
+            id2token = self.filter_windows_to_keep(data, vocab_to_keep=vocab_to_keep)
+        else:
+            self.logger.info(f" --- among the {len(token2subdoccount)} vocabs, retaining {len(token2id)} in the model")
+            self.filter_windows_to_keep(data, token2id=token2id)
+
+        rnn_input = self.get_rnn(id2token,
+                                 (len(self.window_counts['eval']) if token2id else len(self.window_counts['train'])))
         self.logger.info(f"----- completes preprocessing data ----- ")
-        return id2token, rnn_input, len(self.window_counts['train']), len(self.subdoc_counts['train']), len(self.subdoc_counts['eval'])
+        return id2token, rnn_input, (len(self.window_counts['eval']) if token2id else len(self.window_counts['train'])), len(self.subdoc_counts['train']), len(self.subdoc_counts['eval'])
     
     def split_train_eval(self, data, train_proportion, by_category=True):
         
@@ -120,8 +130,8 @@ class CustomDataloader:
                 all_data.extend(values)
             random.shuffle(all_data)
             train_count = math.ceil(train_proportion * len(all_data))
-            train_data = all_data[train_count:]
-            eval_data = all_data[:train_count]
+            train_data = all_data[:train_count]
+            eval_data = all_data[train_count:]
 
         data['train'] = train_data
         data['eval'] = eval_data
@@ -147,13 +157,15 @@ class CustomDataloader:
         self.logger.info(f"----- complete filtering vocabs to keep ----- ")
         return vocab_to_keep
 
-    def filter_windows_to_keep(self, data, vocab_to_keep, by_category=True):
-
+    def filter_windows_to_keep(self, data, by_category=True, 
+                               vocab_to_keep = None, 
+                               token2id = None):
+    
         self.logger.info(f"----- starts filtering windows to keep ----- ")
         self.subdoc_counts = {}
         self.window_counts = {}
         window_transform = {}
-        token2id = {}
+        token2id = token2id if token2id else {}
 
         for name, vs in data.items():
             self.subdoc_counts.setdefault(name, [])
@@ -161,15 +173,21 @@ class CustomDataloader:
            
             for subdoc in vs:
                 window = subdoc['window_idx'] 
-                subdoc["counts"] = {tid: subdoc["tokens"].count(t) 
-                                    for t in subdoc["tokens"] 
-                                    if (t in vocab_to_keep 
+                token_counts = Counter(subdoc["tokens"])
+                if vocab_to_keep:
+                    subdoc["counts"] = {tid: count
+                                        for t, count in token_counts.items() 
+                                        if (t in vocab_to_keep 
                                         and (tid := token2id.setdefault(t, len(token2id))))}
+                else:
+                    subdoc["counts"] = {token2id[t]: count 
+                                        for t, count in token_counts.items() 
+                                        if t in token2id}
                 
                 if subdoc["counts"]:
                     self.subdoc_counts[name].append(subdoc)
                     self.window_counts[name][window] = self.window_counts[name].get(window, 0) + 1
-        
+
         if by_category:
             for name in ['train', 'eval']:
                 sorted_by_key = dict(sorted(self.window_counts[name].items()))
@@ -186,14 +204,21 @@ class CustomDataloader:
                     accum_idx += counts
         
         all_windows = set(w for v in self.window_counts.values() for w in v.keys())
-        windows_to_keep = {
-            w
-            for w in self.window_counts["train"].keys()
-            if all([w in v for v in self.window_counts.values()])
-        }
-
+        if vocab_to_keep:
+            windows_to_keep = {
+                w
+                for w in self.window_counts['train'].keys()
+                if all([w in v for v in self.window_counts.values()])
+            }
+        else:
+            windows_to_keep =   {
+                    w
+                    for w in self.window_counts['eval'].keys()
+                    if all([v for v in self.window_counts['eval'].values()])
+                }
+            
+        self.logger.info(f"windows to keep: {windows_to_keep}")
         self.logger.info(f"windows with no instances: {all_windows - windows_to_keep}")
- 
         window_transform = {w: i for i, w in enumerate(sorted(windows_to_keep))}
 
         for name in self.subdoc_counts.keys():
@@ -203,24 +228,23 @@ class CustomDataloader:
     ]
         self.window_counts[name] = {window_transform[k]: v for k, v in self.window_counts[name].items() if k in windows_to_keep}
 
-        id2token = {v: k for k, v in token2id.items()}
-        self.logger.info(self.window_counts)
+        id2token = {v: k for k, v in token2id.items()} if vocab_to_keep else None
 
         self.logger.info(f"----- complete filtering windows to keep ----- ")
         return id2token
 
-    def get_rnn(self, id2token):
+    def get_rnn(self, id2token, window_count):
         self.logger.info(f"----- starts get rnn input ----- ")
         rnn_input = {}
         for name in ["train", "eval"]:
             batch_size = self.batch_size if name == 'train' else self.eval_batch_size
             indices = torch.arange(0, len(self.subdoc_counts[name]), dtype=torch.int)
             indices = torch.split(indices, batch_size)
-            rnn_input[name] = torch.zeros(len(self.window_counts["train"]), len(id2token)).to(
+            rnn_input[name] = torch.zeros(window_count, len(id2token)).to(
                 self.device
             )
             cnt = torch.zeros(
-                len(self.window_counts["train"]),
+                window_count,
             ).to(self.device)
             for _, ind in enumerate(indices):
                 batch_size = len(ind)
@@ -233,7 +257,7 @@ class CustomDataloader:
                         data_batch[i, k] = v
                 data_batch = torch.from_numpy(data_batch).float().to(self.device)
                 times_batch = torch.from_numpy(times_batch).to(self.device)
-                for t in range(len(self.window_counts["train"])):
+                for t in range(window_count):
                     tmp = (times_batch == t).nonzero()
                     docs = data_batch[tmp].squeeze().sum(0)
                     rnn_input[name][t] += docs
@@ -245,8 +269,12 @@ class CustomDataloader:
     def batch_generator(self, vocab_size, is_train=True, by_category=True):
         name = "train" if is_train else "eval"
         batch_size = self.batch_size if is_train else self.eval_batch_size
+
+        self.epoch += 1
+        random.seed(self.epoch)
+        torch.manual_seed(self.epoch)
         
-        if by_category:
+        if by_category and is_train:
             if len(self.window_counts[name]) > batch_size:
                 raise Exception("unable to form batch instances because there are more time windows than single batch size")
             total_batch_num = math.ceil(len(self.subdoc_counts[name]) / batch_size)
@@ -311,5 +339,21 @@ class CustomDataloader:
             sums[sums == 0] = 1
             normalized_data_batch = data_batch / sums
 
-            yield data_batch, normalized_data_batch, times_batch
+            yield data_batch, normalized_data_batch, times_batch, batch_indices
         
+    def update_subdoc_counts(self, liks, inds, token2id):
+        try:
+            for lik, ind in zip(liks, inds):
+                lik = lik.argmax(0)
+                self.subdoc_counts['eval'][ind]["tokens"] = [
+                    (
+                            (tok, lik[token2id[tok]].item())
+                            if tok in token2id
+                            else (tok, None)
+                        )
+                        for tok in self.subdoc_counts['eval'][ind]["tokens"]
+                    ]
+                del self.subdoc_counts['eval'][ind]["counts"]
+        except Exception as e:
+            self.logger.info(f"received error when enumerating text : {str(e)}")
+            raise Exception(e)

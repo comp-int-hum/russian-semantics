@@ -29,10 +29,10 @@ vars.AddVariables(
     ("NUM_TOP_WORDS", "", 8),
     ("MIN_WORD_OCCURRENCE", "", 100),
     ("MAX_WORD_PROPORTION", "", 0.7),
-    ("MIN_TIME", "", 1850),
-    ("MAX_TIME", "", 1910),
+    ("MIN_TIME", "", 1775),
+    ("MAX_TIME", "", 1800),
     ("NUMBER_OF_TOPICS", "", 20),
-    ("WINDOW_SIZE", "", 15),
+    ("WINDOW_SIZE", "", 5),
     ("MAX_SUBDOC_LENGTH", "", 500),
     ("CHUNK_SIZE", "", [500]),
     ("USE_GRID", "", 1),
@@ -96,7 +96,7 @@ env = Environment(
             )
         ),
         "ApplyDETM": Builder(
-            action="python scripts/apply_detm.py --model ${SOURCES[0]} --input ${SOURCES[1]} --output ${TARGETS[0]}  --log ${TARGETS[1]} --max_subdoc_length ${MAX_SUBDOC_LENGTH} --min_time ${MIN_TIME} --max_time ${MAX_TIME}"
+            action="python scripts/apply_detm.py --model ${SOURCES[0]} --input ${SOURCES[1]} --output ${TARGETS[0]}  --log ${TARGETS[1]} --max_subdoc_length ${MAX_SUBDOC_LENGTH} --min_time ${MIN_TIME} --max_time ${MAX_TIME} --window_size ${WINDOW_SIZE} --random_seed ${RANDOM_SEED} --batch_size ${BATCH_SIZE}"
         ),
         "CreateMatrices": Builder(
             action="python scripts/create_matrices.py --topic_annotations ${SOURCES[0]} --log ${TARGETS[1]} --output ${TARGETS[0]} --window_size ${WINDOW_SIZE} --min_time ${MIN_TIME}"
@@ -180,24 +180,26 @@ if (
 
 if env["USE_PREEXISTING_DETM"]:
     if not env["USE_SBATCH"]:
-        jsonl_russian_doc_dir = env["DOC_DIR"]
-        model_file = f"work/1850_1900_model/detm_model_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['LR_IDENTIFIERS'][0]}_{env['EPOCHS']}.bin"
-        output_file = f"work/apply_model_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['LR_IDENTIFIERS'][0]}_{env['EPOCHS']}.bin"
-        output_log = (
-            f"apply_detm_{env['MIN_TIME']}_{env['MAX_TIME']}_Epoch_{env['EPOCHS']}.out"
-        )
-        slurm_file = f"apply_detm_{env['MIN_TIME']}_{env['MAX_TIME']}.sh"
-        # env.ApplyDETM([output_file, output_log], [model_file, jsonl_russian_doc_dir])
-        topic_annotations = output_file
-        output_file = f"work/matrices_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}.pkl.gz"
-        output_log = f"create_matrices_{env['MIN_TIME']}_{env['MAX_TIME']}_Epoch_{env['EPOCHS']}.out"
-        # env.CreateMatrices([output_file, output_log], topic_annotations)
-        matrices_input = output_file
-        latex_output = f"work/tables_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['FIGURE_TYPE']}.tex"
-        output_log = f"create_figures_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['FIGURE_TYPE']}.out"
-        figure_output = f"work/temporal_image_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['FIGURE_TYPE']}.png"
+        for idx in range(len(env["LEARNING_RATES"])):
+            jsonl_russian_doc_dir = env["DOC_DIR"]
+            model_file = f"work/training_w_time_bin_preprocess/detm_model_{env['MIN_TIME']}-{env['MAX_TIME']}_topics_{env['NUMBER_OF_TOPICS']}_sublen_{env['MAX_SUBDOC_LENGTH']}_widsize_{env['WINDOW_SIZE']}_lr_{env['LR_IDENTIFIERS'][idx]}_epoch_{env['EPOCHS']}.bin"
+            output_file = f"work/training_w_time_bin_preprocess/apply_model_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['LR_IDENTIFIERS'][0]}_{env['EPOCHS']}.bin"
+            output_log = (
+                f"work/training_w_time_bin_preprocess/apply_detm_{env['MIN_TIME']}_{env['MAX_TIME']}_Epoch_{env['EPOCHS']}.out"
+            )
+            slurm_file = f"apply_detm_{env['MIN_TIME']}_{env['MAX_TIME']}.sh"
+            # env.ApplyDETM([output_file, output_log], [model_file, jsonl_russian_doc_dir])
 
-        env.CreateFigures([latex_output, figure_output, output_log], matrices_input)
+            topic_annotations = output_file
+            output_file = f"work/training_w_time_bin_preprocess/matrices_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}.pkl.gz"
+            output_log = f"work/training_w_time_bin_preprocess/create_matrices_{env['MIN_TIME']}_{env['MAX_TIME']}_Epoch_{env['EPOCHS']}.out"
+            # env.CreateMatrices([output_file, output_log], topic_annotations)
+            matrices_input = output_file
+            latex_output = f"work/training_w_time_bin_preprocess/tables_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['FIGURE_TYPE']}.tex"
+            output_log = f"work/training_w_time_bin_preprocess/create_figures_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['FIGURE_TYPE']}.out"
+            figure_output = f"images/temporal_image_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['FIGURE_TYPE']}.png"
+
+            env.CreateFigures([latex_output, figure_output, output_log], matrices_input)
 
 if env["DEBUG_LDA"]:
     jsonl_russian_doc_dir = env["DOC_DIR"]

@@ -18,6 +18,7 @@ vars.AddVariables(
     ("USE_PREASSEMBLED_STATS", "", False),
     ("USE_PREEXISTING_DETM", "", False),
     ("DEBUG_LDA", "", False),
+    ("COMPARE_MODELS", "", False),
     # embedding & debug vocab params
     ("DEBUG_EMBEDDING_VOCAB", "", False),
     ("USE_PART_OF_DOCS", "", False),
@@ -43,12 +44,12 @@ vars.AddVariables(
     ("GPU_QUEUE", "", "a100"),
     ("BATCH_SIZE", "", 64),  # 2048?
     ("EPOCHS", "", 200),
-    ("LEARNING_RATES", "", [0.015]),
-    # ("LEARNING_RATES", "", [0.1, 0.05, 0.015]),
-    ("LR_IDENTIFIERS", "", ["0015"]),
-    # ("LR_IDENTIFIERS", "", ["01", "005", "0015"]),
+    ("LEARNING_RATE", "", 0.015),
+    ("LR_IDENTIFIER", "", "0015"),
     ("BIMODAL_ATTESTATION_LEVEL", "", 1),
     ("RANDOM_SEED", "", 42),
+    ("BATCH_PREPROCESS", "", True),
+    ("BATCH_PREPROCESS_COMMAND", "", "--batch_preprocess"),
     # create figures params
     ("FIGURE_TYPE", "", "topic_top_titles"),
 )
@@ -80,7 +81,7 @@ env = Environment(
                 + "--output ${TARGETS[0]} --log ${TARGETS[1]} --num_topics ${NUMBER_OF_TOPICS} --batch_size ${BATCH_SIZE} --min_word_occurrence ${MIN_WORD_OCCURRENCE} "
                 + "--max_word_proportion ${MAX_WORD_PROPORTION} --window_size ${WINDOW_SIZE} --max_subdoc_length ${MAX_SUBDOC_LENGTH} --epochs ${EPOCHS} "
                 + "--emb_size ${EMBEDDING_SIZE} --rho_size ${EMBEDDING_SIZE} --learning_rate ${LEARNING_RATE} --random_seed ${RANDOM_SEED} "
-                + "--min_time ${MIN_TIME} --max_time ${MAX_TIME}' "
+                + "--min_time ${MIN_TIME} --max_time ${MAX_TIME} ${BATCH_PREPROCESS_COMMAND}' "
                 + "--job_name detm_model --use_gpu --account ${GPU_ACCOUNT} --partition ${GPU_QUEUE} "
                 + "--gres gpu:1 --time 24:00:00 --mem_alloc 180G"
             )
@@ -92,8 +93,11 @@ env = Environment(
                 + "--min_word_occurrence ${MIN_WORD_OCCURRENCE} --max_word_proportion ${MAX_WORD_PROPORTION} "
                 + "--window_size ${WINDOW_SIZE} --max_subdoc_length ${MAX_SUBDOC_LENGTH} --epochs ${EPOCHS} "
                 + "--emb_size ${EMBEDDING_SIZE} --rho_size ${EMBEDDING_SIZE} --learning_rate ${LEARNING_RATE} "
-                + "--random_seed ${RANDOM_SEED} --min_time ${MIN_TIME} --max_time ${MAX_TIME}"
+                + "--random_seed ${RANDOM_SEED} --min_time ${MIN_TIME} --max_time ${MAX_TIME} ${BATCH_PREPROCESS_COMMAND}"
             )
+        ),
+        "CompareDETM": Builder(
+            action="python scripts/comparative_evaluation.py --model_01 ${SOURCES[0]} --model_02 ${SOURCES[1]} --input ${SOURCES[2]}  --log ${TARGETS[0]} --max_subdoc_length ${MAX_SUBDOC_LENGTH} --min_time ${MIN_TIME} --max_time ${MAX_TIME} --window_size ${WINDOW_SIZE} --random_seed ${RANDOM_SEED} --batch_size ${BATCH_SIZE}"
         ),
         "ApplyDETM": Builder(
             action="python scripts/apply_detm.py --model ${SOURCES[0]} --input ${SOURCES[1]} --output ${TARGETS[0]}  --log ${TARGETS[1]} --max_subdoc_length ${MAX_SUBDOC_LENGTH} --min_time ${MIN_TIME} --max_time ${MAX_TIME} --window_size ${WINDOW_SIZE} --random_seed ${RANDOM_SEED} --batch_size ${BATCH_SIZE}"
@@ -153,53 +157,65 @@ if (
     embeddings_dir = env["EMBEDDING_DIR"]
     jsonl_russian_doc_dir = env["DOC_DIR"]
 
-    for idx in range(len(env["LEARNING_RATES"])):
-
-        output_file = f"work/detm_model_{env['MIN_TIME']}-{env['MAX_TIME']}_topics_{env['NUMBER_OF_TOPICS']}_sublen_{env['MAX_SUBDOC_LENGTH']}_widsize_{env['WINDOW_SIZE']}_lr_{env['LR_IDENTIFIERS'][idx]}_epoch_{env['EPOCHS']}.bin"
-        output_log = f"train_detm_{env['MIN_TIME']}-{env['MAX_TIME']}_topics_{env['NUMBER_OF_TOPICS']}_sublen_{env['MAX_SUBDOC_LENGTH']}_widsize_{env['WINDOW_SIZE']}_lr_{env['LR_IDENTIFIERS'][idx]}_epoch_{env['EPOCHS']}.out"
-        slurm_file = f"train_detm_{env['LR_IDENTIFIERS'][idx]}.sh"
-        if not env["USE_SBATCH"]:
-            env.TrainDETM(
-                [output_file, output_log],
-                [embeddings_dir, jsonl_russian_doc_dir],
-                LR_IDX=env["LR_IDENTIFIERS"][idx],
-                SLURM_FILE=slurm_file,
-                LEARNING_RATE=env["LEARNING_RATES"][idx],
-            )
-
-        else:
-            env.BuildDETMSlurm(
-                [output_file, output_log],
-                [embeddings_dir, jsonl_russian_doc_dir],
-                LEARNING_RATE=env["LEARNING_RATES"][idx],
-                STEAMROLLER_ACCOUNT=env.get("GPU_ACCOUNT", None),
-                STEAMROLLER_GPU_COUNT=1,
-                STEAMROLLER_QUEUE=env.get("GPU_QUEUE", None),
-                STEAMROLLER_MEMORY="180G",
-            )
-
-if env["USE_PREEXISTING_DETM"]:
+    output_file = (f"work/detm_model_{env['MIN_TIME']}-{env['MAX_TIME']}_topics_{env['NUMBER_OF_TOPICS']}" + 
+                   f"_sublen_{env['MAX_SUBDOC_LENGTH']}_widsize_{env['WINDOW_SIZE']}_lr_{env['LR_IDENTIFIER']}" + 
+                   f"_epoch_{env['EPOCHS']}_{'w_batch_preprocess' if env['BATCH_PREPROCESS'] else ''}.bin")
+    output_log = (f"train_detm_{env['MIN_TIME']}-{env['MAX_TIME']}_topics_{env['NUMBER_OF_TOPICS']}" + 
+                  f"_sublen_{env['MAX_SUBDOC_LENGTH']}_widsize_{env['WINDOW_SIZE']}_lr_{env['LR_IDENTIFIER']}" + 
+                  f"_epoch_{env['EPOCHS']}_{'w_batch_preprocess' if env['BATCH_PREPROCESS'] else ''}.out")
+    slurm_file = f"train_detm_{env['LR_IDENTIFIER']}.sh"
     if not env["USE_SBATCH"]:
-        for idx in range(len(env["LEARNING_RATES"])):
-            jsonl_russian_doc_dir = env["DOC_DIR"]
-            model_file = f"work/training_w_time_bin_preprocess/detm_model_{env['MIN_TIME']}-{env['MAX_TIME']}_topics_{env['NUMBER_OF_TOPICS']}_sublen_{env['MAX_SUBDOC_LENGTH']}_widsize_{env['WINDOW_SIZE']}_lr_{env['LR_IDENTIFIERS'][idx]}_epoch_{env['EPOCHS']}.bin"
-            output_file = f"work/training_w_time_bin_preprocess/apply_model_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['LR_IDENTIFIERS'][0]}_{env['EPOCHS']}.bin"
-            output_log = (
-                f"work/training_w_time_bin_preprocess/apply_detm_{env['MIN_TIME']}_{env['MAX_TIME']}_Epoch_{env['EPOCHS']}.out"
+        env.TrainDETM(
+            [output_file, output_log],
+            [embeddings_dir, jsonl_russian_doc_dir],
+            LR_IDX=env["LR_IDENTIFIER"],
+            SLURM_FILE=slurm_file,
+            LEARNING_RATE=env["LEARNING_RATE"],
+        )
+
+    else:
+        env.BuildDETMSlurm(
+            [output_file, output_log],
+            [embeddings_dir, jsonl_russian_doc_dir],
+            LEARNING_RATE=env["LEARNING_RATE"],
+            STEAMROLLER_ACCOUNT=env.get("GPU_ACCOUNT", None),
+            STEAMROLLER_GPU_COUNT=1,
+            STEAMROLLER_QUEUE=env.get("GPU_QUEUE", None),
+            STEAMROLLER_MEMORY="180G",
             )
-            slurm_file = f"apply_detm_{env['MIN_TIME']}_{env['MAX_TIME']}.sh"
-            # env.ApplyDETM([output_file, output_log], [model_file, jsonl_russian_doc_dir])
 
-            topic_annotations = output_file
-            output_file = f"work/training_w_time_bin_preprocess/matrices_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}.pkl.gz"
-            output_log = f"work/training_w_time_bin_preprocess/create_matrices_{env['MIN_TIME']}_{env['MAX_TIME']}_Epoch_{env['EPOCHS']}.out"
-            # env.CreateMatrices([output_file, output_log], topic_annotations)
-            matrices_input = output_file
-            latex_output = f"work/training_w_time_bin_preprocess/tables_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['FIGURE_TYPE']}.tex"
-            output_log = f"work/training_w_time_bin_preprocess/create_figures_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['FIGURE_TYPE']}.out"
-            figure_output = f"images/temporal_image_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['FIGURE_TYPE']}.png"
+if env["USE_PREEXISTING_DETM"] and not env['COMPARE_MODELS']:
+    if not env["USE_SBATCH"]:
+        jsonl_russian_doc_dir = env["DOC_DIR"]
+            
+        model_file = f"work/training_w_time_bin_preprocess/detm_model_{env['MIN_TIME']}-{env['MAX_TIME']}_topics_{env['NUMBER_OF_TOPICS']}_sublen_{env['MAX_SUBDOC_LENGTH']}_widsize_{env['WINDOW_SIZE']}_lr_{env['LR_IDENTIFIER']}_epoch_{env['EPOCHS']}.bin"
+        output_file = f"work/training_w_time_bin_preprocess/apply_model_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['LR_IDENTIFIER']}_{env['EPOCHS']}.bin"
+        output_log = (
+            f"work/training_w_time_bin_preprocess/apply_detm_{env['MIN_TIME']}_{env['MAX_TIME']}_Epoch_{env['EPOCHS']}.out"
+        )
+        slurm_file = f"apply_detm_{env['MIN_TIME']}_{env['MAX_TIME']}.sh"
+        # env.ApplyDETM([output_file, output_log], [model_file, jsonl_russian_doc_dir])
 
-            env.CreateFigures([latex_output, figure_output, output_log], matrices_input)
+        topic_annotations = output_file
+        output_file = f"work/training_w_time_bin_preprocess/matrices_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}.pkl.gz"
+        output_log = f"work/training_w_time_bin_preprocess/create_matrices_{env['MIN_TIME']}_{env['MAX_TIME']}_Epoch_{env['EPOCHS']}.out"
+        # env.CreateMatrices([output_file, output_log], topic_annotations)
+        matrices_input = output_file
+        latex_output = f"work/training_w_time_bin_preprocess/tables_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['FIGURE_TYPE']}.tex"
+        output_log = f"work/training_w_time_bin_preprocess/create_figures_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['FIGURE_TYPE']}.out"
+        figure_output = f"images/temporal_image_{env['NUMBER_OF_TOPICS']}_{env['MAX_SUBDOC_LENGTH']}_{env['WINDOW_SIZE']}_{env['FIGURE_TYPE']}.png"
+
+        # env.CreateFigures([latex_output, figure_output, output_log], matrices_input)
+    
+if env["COMPARE_MODELS"]:
+    model_01_file = "work/detm_model_1775-1800_topics_20_sublen_500_widsize_5_lr_0015_epoch_200_w_batch_preprocess.bin"
+    model_02_file = "work/detm_model_1775-1800_topics_20_sublen_500_widsize_5_lr_0015_epoch_200.bin"
+    jsonl_russian_doc_dir = env["DOC_DIR"]
+    output_log = f"work/compare_detm_{env['MIN_TIME']}_{env['MAX_TIME']}_Epoch_{env['EPOCHS']}.out"
+
+    env.CompareDETM([output_log], [model_01_file, model_02_file, jsonl_russian_doc_dir])
+        
+    
 
 if env["DEBUG_LDA"]:
     jsonl_russian_doc_dir = env["DOC_DIR"]

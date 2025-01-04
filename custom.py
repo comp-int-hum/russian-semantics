@@ -9,4 +9,6 @@ USE_SBATCH = False
 USE_PREEXISTING_DETM = True
 DEBUG_LDA = False
 
+COMPARE_MODELS = True
+
 FIGURE_TYPE = "default"

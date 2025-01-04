@@ -1,4 +1,4 @@
-import copy, gzip, math, argparse, torch, logging
+import copy, gzip, math, argparse, torch, logging, json
 from gensim.models import Word2Vec, KeyedVectors
 from tqdm import trange
 import numpy as np
@@ -75,7 +75,7 @@ if __name__ == "__main__":
 
     dataloader = CustomDataloader(args, logger)
     id2token, rnn_input, num_times, num_train, num_eval = dataloader.preprocess_data(args.train, args.eval, args.train_proportion)
-
+    
     if args.embeddings:
         if args.embeddings.endswith("txt"):
             wv = {}
@@ -127,11 +127,11 @@ if __name__ == "__main__":
         detm_model.start_epoch()
         detm_model.train()
 
-        train_batch_generator = dataloader.batch_generator(args.vocab_size)
+        train_batch_generator = dataloader.batch_generator(args.vocab_size, by_category=args.batch_preprocess)
 
         try:
             while True:  
-                train_data_batch, train_normalized_data_batch, train_times_batch = next(train_batch_generator)
+                train_data_batch, train_normalized_data_batch, train_times_batch, _ = next(train_batch_generator)
                 loss = detm_model(train_data_batch, train_normalized_data_batch, 
                                   train_times_batch, rnn_input["train"], 
                                   num_train)
@@ -153,7 +153,7 @@ if __name__ == "__main__":
             eval_cnt = 0
 
             eval_batch_generator = dataloader.batch_generator(args.vocab_size,
-                                                           is_train=False)
+                                                           is_train=False, by_category=args.batch_preprocess)
             
             try:
                 while True:

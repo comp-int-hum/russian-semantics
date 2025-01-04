@@ -333,7 +333,7 @@ class DETM(torch.nn.Module):
             lik = self.get_lik(theta, beta)
             return lik
 
-        nll, lik = self.get_nll(theta, beta, bows, is_train=is_train)
+        nll = self.get_nll(theta, beta, bows, is_train=is_train)
 
         if is_train:
             nll = nll.sum() * coeff
@@ -383,20 +383,26 @@ class DETM(torch.nn.Module):
             self.eval_acc_loss += loss
             self.eval_cnt += 1
     
-    def log_stats(self, epoch_num, lr, logger):
+    def log_stats(self, epoch_num, lr, logger, only_eval = False):
 
         eval_ppl = math.exp(self.eval_acc_loss / self.eval_cnt)
 
-        logger.info(
-        "Epoch {}: LR: {}, KL_theta: {}, KL_eta: {}, KL_alpha: {}, Rec_loss: {}, NELBO: {}, PPL: {}".format(
-                epoch_num, lr,
-                round(self.train_acc_kl_theta_loss / self.train_cnt, 2),
-                round(self.train_acc_kl_eta_loss / self.train_cnt, 2),
-                round(self.train_acc_kl_alpha_loss / self.train_cnt, 2),
-                round(self.train_acc_nll / self.train_cnt, 2),
-                round(self.train_acc_nelbo / self.train_cnt, 2),
-                round(eval_ppl, 1)
+        if only_eval:
+            logger.info(
+                "Evaluation result for model #{}: PPL: {}".format(
+                    epoch_num,
+                    round(eval_ppl, 1)))
+        else:
+            logger.info(
+            "Epoch {}: LR: {}, KL_theta: {}, KL_eta: {}, KL_alpha: {}, Rec_loss: {}, NELBO: {}, PPL: {}".format(
+                    epoch_num, lr,
+                    round(self.train_acc_kl_theta_loss / self.train_cnt, 2),
+                    round(self.train_acc_kl_eta_loss / self.train_cnt, 2),
+                    round(self.train_acc_kl_alpha_loss / self.train_cnt, 2),
+                    round(self.train_acc_nll / self.train_cnt, 2),
+                    round(self.train_acc_nelbo / self.train_cnt, 2),
+                    round(eval_ppl, 1)
+                )
             )
-        )
 
         return eval_ppl

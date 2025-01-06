@@ -88,8 +88,8 @@ if __name__ == "__main__":
         else:
             # error of failure to allocate at this step
             w2v = Word2Vec.load(args.embeddings)  
-            test_model = KeyedVectors.load(args.embeddings)
-            words = list(test_model.wv.key_to_index.keys())
+            # test_model = KeyedVectors.load(args.embeddings)
+            # words = list(test_model.wv.key_to_index.keys())
             embeddings = torch.tensor(
                 np.array([w2v.wv[id2token[i]] for i in range(len(id2token))])
             )

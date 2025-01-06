@@ -19,13 +19,4 @@ def dump_dataframe(df_dir: str, df_data: pd.DataFrame, printable: bool = False) 
     print(f"successfully dumped into file {df_dir}")
 
 
-def open_jsonl_file(file_path: str) -> Generator[Dict[str, Any], None, None]:
-    with gzip.open(file_path, mode="rt") as f:
-        for line in f:
-            yield line
 
-
-def write_jsonl_file(dump_file_path: str, item_data: Dict[str, str]) -> None:
-    with gzip.open(dump_file_path, "at", encoding="utf-8") as file:
-        json_line = json.dumps(item_data)
-        file.write(json_line + "\n")

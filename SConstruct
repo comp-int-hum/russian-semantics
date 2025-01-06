@@ -10,7 +10,7 @@ vars.AddVariables(
     (
         "EMBEDDING_DIR",
         "",
-        "${DATA_ROOT}/stemmed_embeddings/word_2_vec_embeddings.bin",
+        "${DATA_ROOT}/stemmed_embeddings/word_2_vec_embeddings_wDETM_v3.bin",
     ),
     # Running status
     ("USE_PREASSEMBLED_DATA", "", False),
@@ -67,11 +67,11 @@ env = Environment(
         "DebugEmbeddingVocab": Builder(
             action="python scripts/check_vocab_counter.py --input ${SOURCES} --output ${TARGETS} --num_docs ${VOCAB_COUNTER_NUM_DOCS}"
         ),
-        "TrainEmbeddingsAndStats": Builder(
-            action="python scripts/train_embeddings_and_generate_stats.py --input ${SOURCES} --model_output ${TARGETS[0]} --stats_output ${TARGETS[1]} --num_docs ${NUMBERS_OF_DOC} --embedding_size ${EMBEDDING_SIZE}"
+        "TrainEmbeddings": Builder(
+            action="python scripts/002_train_embeddings_w_DETM.py --input ${SOURCES} --output ${TARGETS[0]} --num_docs ${NUMBERS_OF_DOC} --embedding_size ${EMBEDDING_SIZE}"
         ),
         "GetEmbeddingStats": Builder(
-            action="python scripts/train_embeddings_and_generate_stats.py --input ${SOURCES} --model_output ${TARGETS[0]} --stats_output ${TARGETS[1]} --num_docs ${NUMBERS_OF_DOC} --embedding_size ${EMBEDDING_SIZE} --skip_model"
+            action="python scripts/003_generate_stats_w_DETM.py --input ${SOURCES} --output ${TARGETS[0]}"
         ),
         "BuildDETMSlurm": Builder(
             action=(
@@ -88,7 +88,7 @@ env = Environment(
         ),
         "TrainDETM": Builder(
             action=(
-                "python scripts/train_detm.py --embeddings ${SOURCES[0]} --train ${SOURCES[1]}  "
+                "python scripts/004_train_detm_w_DETM.py --embeddings ${SOURCES[0]} --train ${SOURCES[1]}  "
                 + "--output ${TARGETS[0]} --log ${TARGETS[1]} --num_topics ${NUMBER_OF_TOPICS} --batch_size ${BATCH_SIZE} "
                 + "--min_word_occurrence ${MIN_WORD_OCCURRENCE} --max_word_proportion ${MAX_WORD_PROPORTION} "
                 + "--window_size ${WINDOW_SIZE} --max_subdoc_length ${MAX_SUBDOC_LENGTH} --epochs ${EPOCHS} "
@@ -132,21 +132,21 @@ if env["USE_PREASSEMBLED_DATA"] and not env["USE_PREASSEMBLED_STATS"]:
         env.DebugEmbeddingVocab("work/vocab_freq.csv", jsonl_russian_doc_dir)
 
     embedding_dir = (
-        f"work/embeddings/word_2_vec_embeddings_doc{env['NUMBERS_OF_DOC']}.bin"
+        f"work/embeddings/word_2_vec_embeddings_doc{env['NUMBERS_OF_DOC']}_wDETM_v3.bin"
         if env["USE_PART_OF_DOCS"] and type(env["NUMBERS_OF_DOC"]) == int
         else env["EMBEDDING_DIR"]
     )
     stats_dir = (
-        f"images/embedding_similarity_table_doc{env['NUMBERS_OF_DOC']}.png"
+        f"images/embedding_similarity_table_doc{env['NUMBERS_OF_DOC']}_wDETM_v3.png"
         if env["USE_PART_OF_DOCS"] and type(env["NUMBERS_OF_DOC"]) == int
-        else "images/embedding_stemmed_no_punc_similarity_table.png"
+        else "images/embedding_stemmed_similarity_table_wDETM_v3.png"
     )
 
     if not env["USE_PRETRAINED_EMBEDDING"]:
-        env.TrainEmbeddingsAndStats([embedding_dir, stats_dir], jsonl_russian_doc_dir)
+        env.TrainEmbeddings([embedding_dir], jsonl_russian_doc_dir)
 
     else:
-        env.GetEmbeddingStats([embedding_dir, stats_dir], jsonl_russian_doc_dir)
+        env.GetEmbeddingStats([stats_dir], embedding_dir)
 
 
 if (

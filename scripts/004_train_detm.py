@@ -2,8 +2,8 @@ import copy, gzip, math, argparse, torch, logging, json
 from gensim.models import Word2Vec, KeyedVectors
 from tqdm import trange
 import numpy as np
-from detm import DETM
-from detm_dataloader import CustomDataloader
+from detm import Dataset, DataLoader, DETM, Trainer
+from detm import load_embeddings, filter_embeddings
 
 logger = logging.getLogger("train_detm")
 
@@ -57,7 +57,10 @@ if __name__ == "__main__":
     parser.add_argument("--early_stop", type=int, default=20)
     parser.add_argument("--reduce_rate", type=int, default=5)
     parser.add_argument("--batch_preprocess", action='store_true')
+    parser.add_argument("--content_field", type=str, required=True)
+    parser.add_argument("--time_field", type=str, required=True)
     args = parser.parse_args()
+
     args.device = (
         torch.device(args.device)
         if args.device
@@ -73,117 +76,80 @@ if __name__ == "__main__":
         filename=args.log,
     )
 
-    dataloader = CustomDataloader(args, logger)
-    id2token, rnn_input, num_times, num_train, num_eval = dataloader.preprocess_data(args.train, args.eval, args.train_proportion)
-    
-    if args.embeddings:
-        if args.embeddings.endswith("txt"):
-            wv = {}
-            with open(args.embeddings, "rt") as ifd:
-                for line in ifd:
-                    toks = line.split()
-                    wv[toks[0]] = list(map(float, toks[1:]))
-            embeddings = torch.tensor([wv[id2token[i]] for i in range(len(id2token))])
+    all_window_ranges = [f"{args.min_time + idx * args.window_size}-" + 
+                         f"{args.min_time + (idx + 1) * args.window_size if args.min_time + (idx + 1) * args.window_size <= args.max_time else args.max_time}" 
+                                  for idx in range(math.ceil((args.max_time - args.min_time) / args.window_size))]
 
-        else:
-            # error of failure to allocate at this step
-            w2v = Word2Vec.load(args.embeddings)  
-            # test_model = KeyedVectors.load(args.embeddings)
-            # words = list(test_model.wv.key_to_index.keys())
-            embeddings = torch.tensor(
-                np.array([w2v.wv[id2token[i]] for i in range(len(id2token))])
-            )
+    dataset = Dataset(args.train, args.eval, args.train_proportion)
+    word_list = dataset.preprocess_data(args.min_time, args.max_time, args.window_size,
+                                       args.content_field, args.time_field,
+                                        max_subdoc_length=args.max_subdoc_length, 
+                                        min_word_occurrance=args.min_word_occurrence, 
+                                        max_word_proportion=args.max_word_proportion,
+                                        logger=logger)
+    
+    t_subdocs, t_times, t_auxiliaries, t_time_counter = dataset.get_data(is_train=True)
+    num_windows, num_train = len(t_time_counter), len(t_times)
+    train_dataloader = DataLoader(t_subdocs, t_times, t_auxiliaries, 
+                                  args.batch_size, args.device,
+                                  all_window_ranges,
+                                  time_counter=t_time_counter)
+    
+    e_subdocs, e_times, e_auxiliaries = dataset.get_data(is_train=False)
+    num_eval = len(e_times)
+    eval_dataloader = DataLoader(e_subdocs, e_times, e_auxiliaries, 
+                                 args.eval_batch_size, args.device,
+                                 all_window_ranges)
+    
+    del dataset, t_subdocs, t_times, t_auxiliaries, t_time_counter, e_subdocs, e_times, e_auxiliaries
+
+    if args.embeddings:
+        embeddings = load_embeddings(args.embeddings)
+        embeddings = filter_embeddings(embeddings, word_list)
         
     logger.info("----- loaded embeddings ----- ")
 
-    args.embeddings_dim = embeddings.size()
-    args.num_times = num_times
-    args.vocab_size = len(id2token)
-    args.train_embeddings = 0
+    trainer = Trainer(logger)
+    logger.info("----- initialized trainer ----- ")
 
-    detm_model = DETM(
-        args,
-        id2token,
-        args.min_time,
-        embeddings=embeddings,
-    )
-
+    trainer.init_model(embeddings=embeddings, word_list=word_list,
+                       num_windows=num_windows, num_topics=args.num_topics, 
+                       min_time=args.min_time, max_time=args.max_time,
+                       t_hidden_size=args.t_hidden_size,
+                       eta_hidden_size=args.eta_hidden_size,
+                       enc_drop=args.enc_drop, eta_dropout=args.eta_dropout,
+                       eta_nlayers=args.eta_nlayers, delta=args.delta,
+                       window_size=args.window_size, train_embeddings=args.train_embeddings,
+                       theta_act=args.theta_act, 
+                       batch_size=args.batch_size, device=args.device)
+    
+    trainer.init_training_params(num_train=num_train, num_eval=num_eval,
+                                learning_rate=args.learning_rate, wdecay=args.wdecay, 
+                                clip=args.clip, reduce_rate=args.reduce_rate, 
+                                lr_factor=args.lr_factor, early_stop=args.early_stop)
+    
     logger.info("----- initialized model ----- ")
 
-    detm_model.to(args.device)
-    optimizer = torch.optim.Adam(
-        detm_model.parameters(), lr=args.learning_rate, weight_decay=args.wdecay
-    )
+    train_rnn = train_dataloader.get_rnn(num_windows, len(word_list))
+    eval_rnn = eval_dataloader.get_rnn(num_windows, len(word_list))
+
+    logger.info("----- initialized rnn_input ----- ")
 
     logger.info("----- starts training ----- ")
 
-    best_state = None
-    best_eval_ppl = None
-    since_annealing = 0
-    since_improvement = 0
-    for epoch in trange(1, args.epochs + 1):
-        logger.info("Starting epoch %d", epoch)
-
-        detm_model.start_epoch()
-        detm_model.train()
-
-        train_batch_generator = dataloader.batch_generator(args.vocab_size, by_category=args.batch_preprocess)
-
-        try:
-            while True:  
-                train_data_batch, train_normalized_data_batch, train_times_batch, _ = next(train_batch_generator)
-                loss = detm_model(train_data_batch, train_normalized_data_batch, 
-                                  train_times_batch, rnn_input["train"], 
-                                  num_train)
-                
-                if not torch.any(torch.isnan(loss)):
-                    loss.backward()
-                    if args.clip > 0:
-                        torch.nn.utils.clip_grad_norm_(detm_model.parameters(), args.clip)
-                    optimizer.step()
-
-        except StopIteration:
-            pass
+    for epoch in trange(args.epochs):
+        
+        trainer.start_epoch()
+        train_batch_generator = train_dataloader.batch_generator(len(word_list), epoch, logger=logger)
+        trainer.train_model(train_batch_generator, train_rnn)
 
         logger.info("Computing perplexity...")
+        eval_batch_generator = eval_dataloader.batch_generator(len(word_list), epoch, logger=logger)
+        trainer.eval_model(eval_batch_generator, eval_rnn)
+        continue_flag = trainer.end_epoch()
 
-        detm_model.eval()
-        with torch.no_grad():
-            eval_acc_loss = 0.0
-            eval_cnt = 0
+        if continue_flag is False:
+            break
 
-            eval_batch_generator = dataloader.batch_generator(args.vocab_size,
-                                                           is_train=False, by_category=args.batch_preprocess)
-            
-            try:
-                while True:
-                    eval_data_batch, eval_normalized_data_batch, eval_times_batch, _ = next(eval_batch_generator)
-                    detm_model(eval_data_batch, eval_normalized_data_batch, 
-                               eval_times_batch, rnn_input["eval"], 
-                               is_train=False)
-            except StopIteration:
-                pass
-        
-        eval_ppl = detm_model.log_stats(epoch, optimizer.param_groups[0]["lr"], logger)
-
-        if best_eval_ppl == None or eval_ppl < best_eval_ppl:
-            logger.info("Copying new best model...")
-            best_eval_ppl = eval_ppl
-            best_state = copy.deepcopy(detm_model.state_dict())
-            since_improvement = 0
-            logger.info("Copied.")
-        else:
-            since_improvement += 1
-        since_annealing += 1
-        if (
-            since_improvement > args.reduce_rate and since_annealing > args.reduce_rate
-        ):
-            optimizer.param_groups[0]["lr"] /= args.lr_factor
-            detm_model.load_state_dict(best_state)
-            since_annealing = 0
-        elif since_improvement >= args.early_stop:
-            break    
-
-    detm_model.load_state_dict(best_state)
     with gzip.open(args.output, "wb") as ofd:
-        torch.save(detm_model, ofd)
+        torch.save(trainer.get_best_model(), ofd)

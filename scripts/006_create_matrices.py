@@ -18,7 +18,11 @@ if __name__ == "__main__":
     parser.add_argument("--window_size", dest="window_size", default=20, type=int)
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(
+        format="%(asctime)s : %(levelname)s : %(message)s",
+        level=logging.INFO,
+        filename=args.log,
+    )
         
     # text author title time window num
     docs = {}
@@ -30,12 +34,9 @@ if __name__ == "__main__":
     with gzip.open(args.topic_annotations, "rt") as ifd:
         for i, line in enumerate(ifd):
             j = json.loads(line)
-            # logger.info(j.keys())
-            # exit(0)
             title = j["title"]
-            author = j["author"]
-            year = j["time"]
-            # num = j["subdoc_number"]
+            author = j["author_info"]
+            year = j["written_year"]
             htid = j["htid"]
             doc2title[htid] = title
             doc2author[htid] = author
@@ -51,7 +52,7 @@ if __name__ == "__main__":
 
     sorted_times = list(sorted(unique_times))
 
-    min_time = args.min_time #sorted_times[0]
+    min_time = args.min_time
     max_time = sorted_times[-1]
 
     min_time = sorted_times[0]
@@ -91,7 +92,6 @@ if __name__ == "__main__":
         ndocs,
         nauths
     )
-
     words_wins_topics = numpy.zeros(shape=(nwords, nwins, ntopics))
     auths_wins_topics = numpy.zeros(shape=(nauths, nwins, ntopics))
     htid_wins_topics = numpy.zeros(shape=(ndocs, nwins, ntopics))

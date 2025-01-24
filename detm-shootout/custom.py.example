@@ -1,0 +1,67 @@
+CUDA_DEVICE = "cuda"
+BATCH_SIZE = 2048
+MIN_WORD_COUNT = 50
+MAX_WORD_PROPORTION = 0.5
+TOPIC_COUNT = 25
+LEARNING_RATE = 0.004
+MAX_EPOCHS = 5
+MODEL_TYPES = ["xDETM"]
+
+STUDIES = [
+    {
+        "NAME" : "greek",
+        "TIME_FIELD" : "year",
+        "CONTENT_FIELD" : "content",
+        "WINDOW_SIZE" : 100,
+        "BATCH_SIZE" : 4096,
+        "SPLIT_FIELD" : "year",
+        "DOWN_SAMPLE" : 0.0,
+        "LEARNING_RATE" : 0.004,
+        "WORD_SIMILARITY_TARGETS" : ["ἀγάπη", "ἔρως", "κύων"],
+    },
+    {
+        "NAME" : "russian",
+        "TIME_FIELD" : "written_year",
+        "CONTENT_FIELD" : "text",
+        "BATCH_SIZE" : 2048,
+        "WINDOW_SIZE" : 50,
+        "DOWN_SAMPLE" : 0.9,
+        "LEARNING_RATE" : 0.004,
+        "SPLIT_FIELD" : "written_year",
+        "WORD_SIMILARITY_TARGETS" : ["король", "пшеница", "священник"],
+    },
+    {
+        "NAME" : "scifi",
+        "TIME_FIELD" : "year",
+        "CONTENT_FIELD" : "text",
+        "WINDOW_SIZE" : 10,
+        "DOWN_SAMPLE" : 0.9,
+        "SPLIT_FIELD" : "year",
+        "BATCH_SIZE" : 1024,
+        "LEARNING_RATE" : 0.004,
+        "WORD_SIMILARITY_TARGETS" : ["captain", "alien", "ship"],
+    },
+    {
+        "NAME" : "conservation",
+        "CONTENT_FIELD" : "fullText",
+        "TIME_FIELD" : "publicationYear",
+        "WINDOW_SIZE" : 20,
+        "MIN_WORD_COUNT" : 400,
+        "BATCH_SIZE" : 4096,
+        "DOWN_SAMPLE" : 0.5,
+        "SPLIT_FIELD" : "publicationYear",
+        "LEARNING_RATE" : 0.004,
+        "WORD_SIMILARITY_TARGETS" : ["acetone", "texture", "faded"],
+    },
+    {
+        "NAME" : "latin",
+        "TIME_FIELD" : "inferred_year",
+        "CONTENT_FIELD" : "content",
+        "WINDOW_SIZE" : 100,
+        "BATCH_SIZE" : 4096,
+        "SPLIT_FIELD" : "inferred_year",
+        "DOWN_SAMPLE" : 0.0,
+        "LEARNING_RATE" : 0.004,
+        "WORD_SIMILARITY_TARGETS" : ["figura", "puella", "rego"],
+    }
+]

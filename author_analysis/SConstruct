@@ -1,0 +1,122 @@
+import os.path
+from steamroller import Environment
+from SCons.Environment import OverrideEnvironment
+
+vars = Variables("custom.py")
+vars.AddVariables(
+    ("DATA_ROOT", "", "data"),
+
+    # id2author
+    ("ID2AUTH", "", "id2author.json"),
+    ("ID2AUTH_INTEREST", "", "filtered_id2author.json"),
+
+    # author vocab embeddings
+    ("AUTH_VOCAB_EMBEDS", "", "auth_vocab_embeds.csv"),
+    ("AUTH_VOCAB_EMBEDS_COSSIM", "", "auth_vocab_embeds_cos.csv"),
+    ("AUTH_VOCAB_EMBEDS_EUCDIS", "", "auth_vocab_embeds_euc.csv"),
+
+    # autor topic embeddings
+    ("AUTH_TOPIC_DIST", "", "auth_topic_dist.csv"),
+    ("AUTH_TOPIC_DIST_JSDIV", "", "auth_topic_js.csv"),
+
+    # steps on the way
+    ("PRELOAD_EMBED", "", False),
+    ("PRELOAD_MATRICE", "", False),
+    ("GENERATE_TABULAR_IMAGE", "", True),
+    ("GENERATE_CLUSTER", "", True),
+
+    # order by auth info
+    ("GLOBAL_DATA_DIR", "", "/home/zxia15/detm-shootout/work/russian/"),
+    ("MATRIX_DIR", "", "xDETM_all_data_matrice.pkl.gz"),
+    ("MATRIX_AUTHOR_FIELD", "", "awt"), # author_window_time
+    ("AUTHOR_COUNTER_DIR", "", "author_vocab_counter.jsonl.gz"),
+    ("AUTHOR_EMBED_DIR", "", "author_embeddings.jsonl.gz"),
+    ("EMBED_AUTHOR_FIELD", "", "author"),
+
+    # generate auth2auth image info
+    ("TABULAR_AUTH", "", []),
+    ("JS_IMAGE_DIR", "", "images/author_topic_dist_js.png"),
+
+    # generate auth2auth cluster info
+    ("CLUSTER_AUTH", "", []),
+    ("JS_CLUSTER_IMAGE_DIR", "", "images/author_topic_dist_cluster.png"),
+    ("JS_CLUSTER_DATA_DIR", "", "data/author_topic_dist_cluster.txt"),
+)
+
+env = Environment(
+    variables=vars,
+    BUILDERS={
+        "OrderByAuth" : Builder(
+            action=("python scripts/order_by_auth.py --input_dir ${SOURCES} --id2auth_dir ${ID2AUTH_DIR} " + 
+                    "--output_dir ${TARGETS} --id2auth_output_dir ${ID2AUTH_OUTPUT_DIR} --embed_size ${EMBED_SIZE} " +
+                    "--author_field ${AUTHOR_FIELD}")
+        ),
+        "GetAuth2Auth" : Builder(
+            action=("python scripts/get_auth2auth_matrix.py --input_dir ${SOURCES} --output_dir ${TARGETS} --mode ${MODE}")
+        ),
+        "GenerateAuth2AuthImg": Builder(
+            action=("python scripts/generate_auth2auth_img.py --input_dir ${SOURCES[0]} --id2auth ${SOURCES[1]} --output_dir ${TARGETS} --filtered_author '${AUTH_ARR}'")
+        ),
+        "GenerateAuth2AuthCluster": Builder(
+            action=("python scripts/generate_auth2auth_cluster.py --input_dir ${SOURCES[0]} --id2auth ${SOURCES[1]} --img_output_dir ${TARGETS[0]} --data_output_dir ${TARGETS[1]} --filter_auth \"${AUTH_ARR}\"")
+        )
+    }
+)
+
+
+if not env['PRELOAD_EMBED']:
+     
+    auth_topic_emb = env.OrderByAuth(
+       "${DATA_ROOT}/${AUTH_TOPIC_DIST}",
+       '${GLOBAL_DATA_DIR}/${MATRIX_DIR}',
+       EMBED_SIZE=15,
+       ID2AUTH_OUTPUT_DIR = '${DATA_ROOT}/${ID2AUTH}',
+       ID2AUTH_DIR = 'DUMMY',
+       AUTHOR_FIELD = '${MATRIX_AUTHOR_FIELD}'
+    )
+
+    # auth_vocab_emb = env.OrderByAuth(
+    #     "${DATA_ROOT}/${AUTH_VOCAB_EMBEDS}",
+    #     '${GLOBAL_DATA_DIR}/${AUTHOR_EMBED_DIR}',
+    #     EMBED_SIZE=300,
+    #     ID2AUTH_OUTPUT_DIR = 'DUMMY',
+    #    ID2AUTH_DIR = '${DATA_ROOT}/${ID2AUTH}',
+    #    AUTHOR_FIELD= '${EMBED_AUTHOR_FIELD}'
+    # )
+else:
+    auth_topic_emb = "${DATA_ROOT}/${AUTH_TOPIC_DIST}"
+
+id2auth_dir = '${DATA_ROOT}/${ID2AUTH}'
+
+if not env['PRELOAD_MATRICE']:
+
+    auth_topic_js = env.GetAuth2Auth(
+        '${DATA_ROOT}/${AUTH_TOPIC_DIST_JSDIV}',
+        auth_topic_emb,
+        MODE='js'
+    )
+else:
+    auth_topic_js = '${DATA_ROOT}/${AUTH_TOPIC_DIST_JSDIV}'
+
+if env['GENERATE_TABULAR_IMAGE']:
+    env.GenerateAuth2AuthImg(
+        '${JS_IMAGE_DIR}',
+        [auth_topic_js, id2auth_dir],
+        AUTH_ARR = ';'.join(env['TABULAR_AUTH'])
+    )
+
+if env['GENERATE_CLUSTER']:
+    env.GenerateAuth2AuthCluster(
+        ['${JS_CLUSTER_IMAGE_DIR}', '${JS_CLUSTER_DATA_DIR}'],
+        [auth_topic_emb, id2auth_dir],
+        AUTH_ARR = ';'.join(env['CLUSTER_AUTH'])
+    )
+
+
+
+
+
+
+
+
+

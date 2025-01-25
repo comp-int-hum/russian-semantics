@@ -1,6 +1,6 @@
-PRELOAD_EMBED = True
-PRELOAD_MATRICE = True
-GENERATE_TABULAR_IMAGE = False
+PRELOAD_EMBED = False
+PRELOAD_MATRICE = False
+GENERATE_TABULAR_IMAGE = True
 
 TABULAR_AUTH = ["Pushkin, Aleksandr Sergeevich (1799-1837)", 
                 "Tolstoy, Leo (1828-1910)", 

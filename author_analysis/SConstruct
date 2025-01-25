@@ -22,11 +22,11 @@ vars.AddVariables(
     # steps on the way
     ("PRELOAD_EMBED", "", False),
     ("PRELOAD_MATRICE", "", False),
-    ("GENERATE_TABULAR_IMAGE", "", True),
-    ("GENERATE_CLUSTER", "", True),
+    ("GENERATE_TABULAR_IMAGE", "", False),
+    ("GENERATE_CLUSTER", "", False),
 
     # order by auth info
-    ("GLOBAL_DATA_DIR", "", "/home/zxia15/detm-shootout/work/russian/"),
+    ("GLOBAL_DATA_DIR", "", "/home/zxia15/data_zxia15/russian-semantics/work/russian/"),
     ("MATRIX_DIR", "", "xDETM_all_data_matrice.pkl.gz"),
     ("MATRIX_AUTHOR_FIELD", "", "awt"), # author_window_time
     ("AUTHOR_COUNTER_DIR", "", "author_vocab_counter.jsonl.gz"),
@@ -75,14 +75,6 @@ if not env['PRELOAD_EMBED']:
        AUTHOR_FIELD = '${MATRIX_AUTHOR_FIELD}'
     )
 
-    # auth_vocab_emb = env.OrderByAuth(
-    #     "${DATA_ROOT}/${AUTH_VOCAB_EMBEDS}",
-    #     '${GLOBAL_DATA_DIR}/${AUTHOR_EMBED_DIR}',
-    #     EMBED_SIZE=300,
-    #     ID2AUTH_OUTPUT_DIR = 'DUMMY',
-    #    ID2AUTH_DIR = '${DATA_ROOT}/${ID2AUTH}',
-    #    AUTHOR_FIELD= '${EMBED_AUTHOR_FIELD}'
-    # )
 else:
     auth_topic_emb = "${DATA_ROOT}/${AUTH_TOPIC_DIST}"
 

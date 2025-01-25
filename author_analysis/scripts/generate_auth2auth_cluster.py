@@ -3,6 +3,7 @@ from sklearn.cluster import KMeans
 from sklearn import decomposition
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
+from lib.gapstat import GapStatClustering
 
 logger = logging.getLogger('generate_auth2auth_cluster')
 
@@ -14,7 +15,7 @@ if __name__ == '__main__':
     parser.add_argument("-io", "--img_output_dir", type=str, default="images/generate_auth2auth_cluster.png")
     parser.add_argument("-do", "--data_output_dir", type=str, default="generate_auth2auth_cluster.txt")
     parser.add_argument("-f", "--filter_auth", type=str, required=True)
-    parser.add_argument('-n', '--num_cluster', type=int, default=5)
+    parser.add_argument('-n', '--num_cluster', type=int, default=None)
     parser.add_argument('-c', '--dim_collapse', type=str, default='PCA')
     
     args = parser.parse_args()
@@ -33,21 +34,26 @@ if __name__ == '__main__':
 
     logger.info(f"reducing original embedding of size {auth_embed.shape} to {filter_auth_embed.shape}")
     logger.info("starts training KMeans model .... ")
-    kmeans = KMeans(n_clusters=args.num_cluster,
+    model = (KMeans(n_clusters=args.num_cluster,
                     random_state=0,
                     n_init="auto").fit(filter_auth_embed)
+            if args.num_cluster 
+            else GapStatClustering().fit(filter_auth_embed)
+            )
 
     logger.info("completes training KMeans model .... ")
             
-    labels = kmeans.labels_
-    centroids = kmeans.cluster_centers_
+    labels = model.labels_
+    num_cluster = args.num_cluster if args.num_cluster else model.n_clusters_
+    logger.info(f"producing a KMeans model with {num_cluster} clusters")
     all_output_text = ''
-    for cluster_idx in range(kmeans.n_clusters):
+    for cluster_idx in range(num_cluster):
         cluster_points = filter_auth_embed[labels == cluster_idx]
+        cluster_centroid = numpy.mean(cluster_points, axis=0)
         cluster_variance = numpy.mean(numpy.var(cluster_points, axis=0))
         # cluster_authors = [auth for idx, auth in zip(filter_id, filter_auth) if labels[idx] == cluster_idx]
         cluster_authors = [auth for idx, auth in enumerate(filter_auth) if labels[idx] == cluster_idx]
-        cluster_info = f"Cluster {cluster_idx}: \n Centroid {centroids[cluster_idx]}\n Variance {cluster_variance}\n " +  '\n'.join(cluster_authors) + "\n"
+        cluster_info = f"Cluster {cluster_idx}: \n Centroid {cluster_centroid}\n Variance {cluster_variance}\n " +  '\n'.join(cluster_authors) + "\n"
         all_output_text += cluster_info + "\n"
     
     logger.info(f"writing cluster data to {args.data_output_dir}")

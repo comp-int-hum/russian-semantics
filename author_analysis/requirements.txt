@@ -1,0 +1,6 @@
+matplotlib
+numpy
+scikit-learn
+scipy
+tqdm
+https://github.com/jmmaloney3/gapstat.git@master

@@ -2,6 +2,7 @@ import argparse, gzip, json, re, numpy
 from detm import load_embeddings
 from tqdm import tqdm
 from collections import Counter
+from scripts.lib.gapstat import GapStatClustering
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

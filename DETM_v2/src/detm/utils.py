@@ -409,7 +409,9 @@ def get_matrice(model, subdocs, times, auxiliaries,
 
     words_wins_topics = numpy.zeros(shape=(nwords, nwins, ntopics))
     auths_wins_topics = numpy.zeros(shape=(nauths, nwins, ntopics))
+    auths_words_topics = numpy.zeros(shape=(nauths, nwords, ntopics))
     htid_wins_topics = numpy.zeros(shape=(ndocs, nwins, ntopics))
+    htid_words_topics = numpy.zeros(shape=(ndocs, nwords, ntopics))
     
     for htid, subdocs in docs.items():
         title = doc2title[htid]
@@ -427,11 +429,15 @@ def get_matrice(model, subdocs, times, auxiliaries,
                         words_wins_topics[wid, win] += topic
                         auths_wins_topics[aid, win] += topic
                         htid_wins_topics[did, win] += topic
+                        auths_words_topics[aid, wid] += topic
+                        htid_words_topics[did, wid] += topic
                     else:
                         words_wins_topics[wid, win, topic] += 1
                         auths_wins_topics[aid, win, topic] += 1
                         htid_wins_topics[did, win, topic] += 1
-
+                        auths_words_topics[aid, wid, topic] += 1
+                        htid_words_topics[did, wid, topic] += 1
+                        
     if logger:
         logger.info(f"----- completes getting matrice ------ ")
 
@@ -444,9 +450,11 @@ def get_matrice(model, subdocs, times, auxiliaries,
             "doc2title": doc2title,
             "doc2author": doc2author,
             "doc2year": doc2year,
-            "wwt": words_wins_topics,
-            "awt": auths_wins_topics,
-            "hwt": htid_wins_topics
+            "wwint": words_wins_topics,
+            "awint": auths_wins_topics,
+            "hwint": htid_wins_topics,
+            "awordt": auths_words_topics,
+            "hwordt": htid_words_topics
         }
 
 def get_top_topic_info(matrice, top_n=5):

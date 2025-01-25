@@ -25,7 +25,7 @@ if __name__ == '__main__':
 
     logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
     
-    # aither the id2auth is known or needs to be extracted from pickle
+    # either the id2auth is known or needs to be extracted from pickle
     # assert not args.id2auth_dir or not args.id2auth_output_dir
     assert args.output_dir.endswith('.csv')
 
@@ -35,7 +35,16 @@ if __name__ == '__main__':
         with gzip.open(args.input_dir, "rb") as ifd:
             
             if ungziped_input_dir.endswith('.pkl'):
-              data = pickle.loads(ifd.read())
+                data = {}
+                while True:
+                    try:
+                        item = pickle.load(ifd)
+                        key = list(item.keys())[0]
+                        if key in [args.author_field, args.embedding_field, args.id2author_field]:
+                            data[key] = item[key]
+                        del item
+                    except EOFError:
+                        break
             
             elif ungziped_input_dir.endswith('.jsonl'):
                 data = []
@@ -47,6 +56,9 @@ if __name__ == '__main__':
     
     elif args.input_dir.endswith('.csv'):
         data = numpy.loadtxt(args.input_dir, delimiter=',')
+    
+    print(data.keys())
+    exit(0)
     
     if args.id2auth_dir.endswith('.json'):
         with open(args.id2auth_dir, 'r') as f:

@@ -1,15 +1,33 @@
-import copy
-import logging
-import random
-import torch
-import math
-import numpy
+import copy, logging, random, torch, math, numpy, gzip, pickle
 from tqdm import tqdm
 from torch import autograd
 
 logger = logging.getLogger("utils")
 
+def _yield_data(subdocs, times, vocab_size, batch_size=64):
+    assert len(subdocs) == len(times)
     
+    indices = torch.randperm(len(subdocs))
+    indices = torch.split(indices, batch_size)
+
+    for ind in tqdm(indices):
+        actual_batch_size = len(ind)
+        data_batch = numpy.zeros((actual_batch_size, vocab_size))
+        times_batch = numpy.zeros((actual_batch_size, ))
+
+        for i, doc_id in enumerate(ind):
+            subdoc = subdocs[doc_id]
+            times_batch[i] = times[doc_id]
+            for k, v in subdoc.items():
+                data_batch[i, k] = v
+        data_batch = torch.from_numpy(data_batch).float()
+        times_batch = torch.from_numpy(times_batch)
+        # sums = data_batch.sum(1).unsqueeze(1)
+        # normalized_data_batch = data_batch / sums
+
+        yield times_batch, data_batch, ind
+        # sums, normalized_data_batch
+
 def train_model(
         subdocs,
         times,
@@ -50,41 +68,35 @@ def train_model(
         acc_kl_eta_loss = 0
         acc_kl_alpha_loss = 0
         cnt = 0
-        indices = torch.randperm(len(train_subdocs))
-        indices = torch.split(indices, batch_size)
-        for idx, ind in enumerate(indices):
-            optimizer.zero_grad()
-            model.zero_grad()
-            actual_batch_size = len(ind)
-            data_batch = numpy.zeros((actual_batch_size, model.vocab_size))
-            times_batch = numpy.zeros((actual_batch_size, ))
 
-            for i, doc_id in enumerate(ind):
-                subdoc = train_subdocs[doc_id]
-                times_batch[i] = train_times[doc_id] #0 if idx > 0 else train_times[doc_id]
-                for k, v in subdoc.items():
-                    data_batch[i, k] = v
-            data_batch = torch.from_numpy(data_batch).float()
-            times_batch = torch.from_numpy(times_batch)
-            sums = data_batch.sum(1).unsqueeze(1)
-            normalized_data_batch = data_batch / sums
-            with autograd.set_detect_anomaly(detect_anomalies):
+        train_generator = _yield_data(train_subdocs, train_times, model.vocab_size,
+                                      batch_size)
+        while True:
+            try:
+                times_batch, data_batch, _ = next(train_generator)
+                optimizer.zero_grad()
+                model.zero_grad()
 
-                loss, nll, kl_alpha, kl_eta, kl_theta = model(
-                    data_batch,
-                    times_batch,
-                )
-                loss.backward()
-                if clip > 0:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
-                optimizer.step()
+                with autograd.set_detect_anomaly(detect_anomalies):
 
-            acc_loss += torch.sum(loss).item()
-            acc_nll += torch.sum(nll).item()
-            acc_kl_theta_loss += torch.sum(kl_theta).item()
-            acc_kl_eta_loss += torch.sum(kl_eta).item()
-            acc_kl_alpha_loss += torch.sum(kl_alpha).item()
-            cnt += data_batch.shape[0]
+                    loss, nll, kl_alpha, kl_eta, kl_theta = model(
+                        data_batch,
+                        times_batch,
+                    )
+                    loss.backward()
+                    if clip > 0:
+                        torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
+                    optimizer.step()
+
+                acc_loss += torch.sum(loss).item()
+                acc_nll += torch.sum(nll).item()
+                acc_kl_theta_loss += torch.sum(kl_theta).item()
+                acc_kl_eta_loss += torch.sum(kl_eta).item()
+                acc_kl_alpha_loss += torch.sum(kl_alpha).item()
+                cnt += data_batch.shape[0]
+            
+            except StopIteration:
+                break
 
         cur_loss = round(acc_loss / cnt, 2) 
         cur_nll = round(acc_nll / cnt, 2) 
@@ -92,7 +104,6 @@ def train_model(
         cur_kl_eta = round(acc_kl_eta_loss / cnt, 2) 
         cur_kl_alpha = round(acc_kl_alpha_loss / cnt, 2) 
         lr = optimizer.param_groups[0]['lr']
-
 
         logger.info("Computing perplexity...")
         _, val_ppl = apply_model(
@@ -161,11 +172,9 @@ def test_for_lr(
     
     train_subdocs = [x for x, _ in pairs[int(val_proportion*len(subdocs)):]]
     train_times = [x for _, x in pairs[int(val_proportion*len(times)):]]
-    indices = torch.randperm(len(train_subdocs))
-    indices = torch.split(indices, batch_size)
-
-    # val_subdocs = [x for x, _ in pairs[:int(val_proportion*len(subdocs))]]
-    # val_times = [x for _, x in pairs[:int(val_proportion*len(times))]]
+    
+    train_generator = _yield_data(train_subdocs, train_times, 
+                                  len(word_list), batch_size)
     
     nan_flag = True
     while nan_flag:
@@ -192,60 +201,39 @@ def test_for_lr(
                      else torch.optim.SGD(model.parameters(), lr=learning_rate,  weight_decay=wdecay))
   
         batch_idx = 0
-        for ind in tqdm(indices):
-            batch_idx += 1
-            if nan_flag:
-                del model
-                del optimizer
-                break
-            optimizer.zero_grad()
-            model.zero_grad()
-            actual_batch_size = len(ind)
-            data_batch = numpy.zeros((actual_batch_size, model.vocab_size))
-            times_batch = numpy.zeros((actual_batch_size, ))
+        while nan_flag:
+            try:
+                times_batch, data_batch, _ = next(train_generator)
+                batch_idx += 1
+        
+                with autograd.set_detect_anomaly(detect_anomalies):
 
-            for i, doc_id in enumerate(ind):
-                subdoc = train_subdocs[doc_id]
-                times_batch[i] = train_times[doc_id] #0 if idx > 0 else train_times[doc_id]
-                for k, v in subdoc.items():
-                    data_batch[i, k] = v
-            data_batch = torch.from_numpy(data_batch).float()
-            times_batch = torch.from_numpy(times_batch)
-            # sums = data_batch.sum(1).unsqueeze(1)
-            # normalized_data_batch = data_batch / sums
-            with autograd.set_detect_anomaly(detect_anomalies):
-
-                loss, nll, kl_alpha, kl_eta, kl_theta = model(
-                    data_batch,
-                    times_batch,
-                )
-                # logger.info(
-                #     'current batch {}: mix_prior={:.3f}, mix={:.3f}, embs={:.3f}, recon={:.3f}, NELBO={:.3f}'.format(
-                #         batch_idx,
-                #         torch.sum(kl_eta).item(),
-                #         torch.sum(kl_theta).item(),
-                #         torch.sum(kl_alpha).item(),
-                #         torch.sum(nll).item(),
-                #         torch.sum(loss).item()
-                #     )
-                # )                
-                if torch.isnan(loss).any():
+                    loss, nll, kl_alpha, kl_eta, kl_theta = model(
+                        data_batch,
+                        times_batch,
+                    )
                     
-                    logger.info(f"got nan in batch #{batch_idx} with lr {learning_rate}, reducing ...")
-                    learning_rate /= lr_factor 
-                    nan_flag = True
-                    break
-                loss.backward()
-                if clip > 0:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
-                optimizer.step()
+                    if torch.isnan(loss).any():
+                    
+                        logger.info(f"got nan in batch #{batch_idx} with lr {learning_rate}, reducing ...")
+                        learning_rate /= lr_factor 
+                        nan_flag = True
+                        del model
+                        del optimizer
+                        break
+                    loss.backward()
+                    if clip > 0:
+                        torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
+                    optimizer.step()
 
-            acc_loss += torch.sum(loss).item()
-            acc_nll += torch.sum(nll).item()
-            acc_kl_theta_loss += torch.sum(kl_theta).item()
-            acc_kl_eta_loss += torch.sum(kl_eta).item()
-            acc_kl_alpha_loss += torch.sum(kl_alpha).item()
-            cnt += data_batch.shape[0]
+                acc_loss += torch.sum(loss).item()
+                acc_nll += torch.sum(nll).item()
+                acc_kl_theta_loss += torch.sum(kl_theta).item()
+                acc_kl_eta_loss += torch.sum(kl_eta).item()
+                acc_kl_alpha_loss += torch.sum(kl_alpha).item()
+                cnt += data_batch.shape[0]
+            except StopIteration:
+                break
 
         if not nan_flag:
             cur_loss = round(acc_loss / cnt, 2) 
@@ -282,125 +270,103 @@ def apply_model(
 
     ppl = 0
     cnt = 0
-    indices = torch.randperm(len(subdocs))
-    indices = torch.split(indices, batch_size)
+    appl_generator = _yield_data(subdocs, times, model.vocab_size, batch_size)
+    while True:
+        try:
+            times_batch, data_batch, _ = next(appl_generator)
+            with autograd.set_detect_anomaly(detect_anomalies):
+                _, nll, _, _, _ = model(
+                    data_batch,
+                    times_batch,
+                )
 
-    for idx, ind in enumerate(indices):
-        actual_batch_size = len(ind)
-        data_batch = numpy.zeros((actual_batch_size, model.vocab_size))
-        times_batch = numpy.zeros((actual_batch_size, ))
-
-        for i, subdoc_id in enumerate(ind):
-            subdoc = subdocs[subdoc_id]
-            tm = times[subdoc_id]
-            times_batch[i] = tm
-            for k, v in subdoc.items():
-                data_batch[i, k] = v
-        data_batch = torch.from_numpy(data_batch).float()
-        times_batch = torch.from_numpy(times_batch)
-        sums = data_batch.sum(1).unsqueeze(1)
-        with autograd.set_detect_anomaly(detect_anomalies):
-            loss, nll, kl_alpha, kl_eta, kl_theta = model(
-                data_batch,
-                times_batch,
-            )
-
-            ppl += torch.sum(nll).item()
-            cnt += data_batch.shape[0]
+                ppl += torch.sum(nll).item()
+                cnt += data_batch.shape[0]
+        except StopIteration:
+            break
     return (), ppl / cnt
 
 def get_matrice(model, subdocs, times, auxiliaries,
-                batch_size, logger=None, get_prob=False,
+                output_dir, batch_size,
+                workid_field, time_field, 
+                author_field=None, workname_field=None,
+                logger=None, get_prob=False,
                 detect_anomalies=False):
 
     if logger:
-        logger.info(f"----- starts applying model ------ ")
+        logger.info("----- starts applying model ------ ")
 
     min_time, max_time, window_size = model.min_time, model.max_time, model.window_size
     num_topics, token_list = model.num_topics, model.word_list
     subdoc_topics = [[
-        (token_list[idx], idx) for idx, _ in subdoc.items()] 
+        (idx, None) for idx, _ in subdoc.items()] 
         for subdoc in subdocs]
         
     model.train(False)
     model.prepare_for_data(subdocs, times)
 
-    indices = torch.randperm(len(subdocs))
-    indices = torch.split(indices, batch_size)
+    appl_generator = _yield_data(subdocs, times, model.vocab_size, batch_size)
 
-    for inds in indices:
-        actual_batch_size = len(inds)
-        data_batch = numpy.zeros((actual_batch_size, model.vocab_size))
-        times_batch = numpy.zeros((actual_batch_size, ))
-
-        for i, subdoc_id in enumerate(inds):
-            subdoc = subdocs[subdoc_id]
-            tm = times[subdoc_id]
-            times_batch[i] = tm
-            for k, v in subdoc.items():
-                data_batch[i, k] = v
-        data_batch = torch.from_numpy(data_batch).float()
-        times_batch = torch.from_numpy(times_batch)
-        with autograd.set_detect_anomaly(detect_anomalies):
-            liks = model.get_likelihood(data_batch, times_batch)
+    while True:
+        try:
+            times_batch, data_batch, inds = next(appl_generator)
+            with autograd.set_detect_anomaly(detect_anomalies):
+                liks = model.get_likelihood(data_batch, times_batch)
             
-            try:
                 for lik, ind in zip(liks, inds):
                     if get_prob:
                         subdoc_topics[ind] = [
-                        (tok, lik[:, idx].cpu().detach().numpy())
-                        for tok, idx in subdoc_topics[ind]
+                            (idx, lik[:, idx].cpu().detach().numpy())
+                            for idx, _ in subdoc_topics[ind]
                         ]
                     else:
                         lik = lik.argmax(0)
                         subdoc_topics[ind] = [
-                            (tok, lik[idx].item())
-                            for tok, idx in subdoc_topics[ind]
+                            (idx, lik[idx].item())
+                            for idx, _ in subdoc_topics[ind]
                             ]
-                
-            except Exception as e:
-                if logger:
-                    logger.info(f"received error when enumerating text : {str(e)}")
-                raise Exception(e)
+        
+        except StopIteration:
+            break
 
     if logger:
-        logger.info(f"----- completes applying model ------ ")
-        logger.info(f"----- starts getting matrice ------ ")
-        
-    docs, doc2title, doc2author, doc2year = {}, {}, {}, {}
-    unique_authors = set()
-    token2id = {tok: idx for idx, tok in enumerate(token_list)}
-        
-    for subdoc, auxiliary in zip(subdoc_topics, auxiliaries):
-        title = auxiliary["title"]
-        author = auxiliary["author_info"]
-        year = auxiliary["written_year"]
-        htid = auxiliary["htid"]
-        doc2title[htid] = title
-        doc2author[htid] = author
-        doc2year[htid] = year
-        docs.setdefault(htid, [])
-        docs[htid].append(subdoc)
-        unique_authors.add(author)
-    start_finish_per_window = [(min_time + idx * window_size, 
-                            (min_time + (idx + 1) * window_size
-                            if (min_time + (idx + 1) * window_size <= max_time) 
-                            else max_time + 1)
-                            )
-                            for idx in range(math.ceil((max_time - min_time) / window_size))]
-    window_rangs  = [numpy.arange(start_year, end_year)
-                    for (start_year, end_year) in start_finish_per_window]
-    # print(window_rangs)
-    nwins, nwords, ntopics, nauths, ndocs = (len(window_rangs), len(token2id), 
-                                            num_topics, len(unique_authors), len(docs))
-       
-
-    author2id = {a : i for i, a in enumerate(unique_authors)}
-    htid2id = {d : i for i, d in enumerate(docs.keys())}
-    time2window = {}
-    for idx, years in enumerate(window_rangs):
-        time2window.update({year: idx for year in years})
+        logger.info("----- completes applying model ------ ")
+        logger.info(f"----- starts getting matrice, using {'likihood probability' if get_prob else 'most likely topic'}  ------ ")
     
+    docs, doc2year = {}, {}
+    token2id = {tok: idx for idx, tok in enumerate(token_list)}
+
+    if author_field:
+        doc2author, unique_authors = {}, set()
+    if workname_field:
+        doc2title = {}
+    
+    for subdoc, auxiliary in tqdm(zip(subdoc_topics, auxiliaries)):
+        workid = auxiliary[workid_field]
+        docs.setdefault(workid, [])
+        docs[workid].append(subdoc)
+        doc2year[workid] = auxiliary[time_field]
+ 
+        if author_field:
+            author = auxiliary[author_field]
+            doc2author[workid] = author
+            unique_authors.add(author)
+        
+        if workname_field:
+            doc2title[workid] = auxiliary[workname_field]
+        
+
+    # print(window_rangs)
+    nwins, nwords, ntopics, nauths, ndocs = (math.ceil((max_time - min_time) / window_size), 
+                                             len(token2id), num_topics, 
+                                             len(unique_authors), len(docs))
+    
+    workid2id = {d : i for i, d in enumerate(docs.keys())}
+    time2window = {}
+    
+    if author_field:
+        author2id = {a : i for i, a in enumerate(unique_authors)}
+
     if logger:
         logger.info(
             f"Found {nwins} windows, {nwords} unique words, {ntopics} unique topics, " +
@@ -408,54 +374,81 @@ def get_matrice(model, subdocs, times, auxiliaries,
         )
 
     words_wins_topics = numpy.zeros(shape=(nwords, nwins, ntopics))
-    auths_wins_topics = numpy.zeros(shape=(nauths, nwins, ntopics))
-    auths_words_topics = numpy.zeros(shape=(nauths, nwords, ntopics))
-    htid_wins_topics = numpy.zeros(shape=(ndocs, nwins, ntopics))
-    htid_words_topics = numpy.zeros(shape=(ndocs, nwords, ntopics))
-    
-    for htid, subdocs in docs.items():
-        title = doc2title[htid]
-        author = doc2author[htid]
-        year = doc2year[htid]
-        aid = author2id[author]
-        win = time2window[year]
-        did = htid2id[htid]
+    works_wins_topics = numpy.zeros(shape=(ndocs, nwins, ntopics))
+    works_words_topics = numpy.zeros(shape=(ndocs, nwords, ntopics))
+
+    if author_field:
+        auths_wins_topics = numpy.zeros(shape=(nauths, nwins, ntopics))
+        auths_words_topics = numpy.zeros(shape=(nauths, nwords, ntopics))
+
+    for workid, subdocs in docs.items():
+        win = (doc2year[workid] - min_time) // window_size
+        idx = workid2id[workid]
         
         for subdoc in subdocs:
-            for word, topic in subdoc:
-                if topic != None:
-                    wid = token2id[word]
-                    if get_prob:
-                        words_wins_topics[wid, win] += topic
-                        auths_wins_topics[aid, win] += topic
-                        htid_wins_topics[did, win] += topic
-                        auths_words_topics[aid, wid] += topic
-                        htid_words_topics[did, wid] += topic
-                    else:
-                        words_wins_topics[wid, win, topic] += 1
-                        auths_wins_topics[aid, win, topic] += 1
-                        htid_wins_topics[did, win, topic] += 1
-                        auths_words_topics[aid, wid, topic] += 1
-                        htid_words_topics[did, wid, topic] += 1
-                        
-    if logger:
-        logger.info(f"----- completes getting matrice ------ ")
+            for wid, topic in subdoc:
+                if get_prob and isinstance(topic, numpy.ndarray):
+                    words_wins_topics[wid, win] += topic
+                    works_wins_topics[idx, win] += topic
+                    works_words_topics[idx, wid] += topic
 
-    return {"start_time": min_time,
-            "end_time": max_time,
-            "window_size": window_size,
-            "id2author": {i : a for a, i in author2id.items()},
-            "id2word": {i : w for w, i in token2id.items()},
-            "id2htid": {i : d for d, i in htid2id.items()},
-            "doc2title": doc2title,
-            "doc2author": doc2author,
-            "doc2year": doc2year,
-            "wwint": words_wins_topics,
-            "awint": auths_wins_topics,
-            "hwint": htid_wins_topics,
-            "awordt": auths_words_topics,
-            "hwordt": htid_words_topics
-        }
+                    if author_field:
+                        aid = author2id[doc2author[workid]]
+                        auths_words_topics[aid, wid] += topic
+                        auths_wins_topics[aid, win] += topic
+
+                elif (not get_prob) and topic != None:
+                    words_wins_topics[wid, win, topic] += 1
+                    works_wins_topics[idx, win, topic] += 1
+                    works_words_topics[idx, wid, topic] += 1
+
+                    if author_field:
+                        aid = author2id[doc2author[workid]]
+                        auths_words_topics[aid, wid, topic] += 1
+                        auths_wins_topics[aid, win, topic] += 1
+    
+    del docs             
+
+    if logger:
+        logger.info(f"----- completes getting matrice. Writing matrice to {output_dir} ------ ")
+
+    with gzip.open(output_dir, 'wb') as f:
+
+        pickle.dump({"word_win_top": words_wins_topics}, f)
+        del words_wins_topics
+        pickle.dump({"work_win_top": works_wins_topics}, f)
+        del works_wins_topics
+        pickle.dump({"work_word_top": works_words_topics}, f)
+        del works_words_topics
+
+        if author_field:
+            pickle.dump({"auth_word_top": auths_words_topics}, f)
+            del auths_words_topics 
+            pickle.dump({"auth_win_top": auths_wins_topics}, f)
+            del auths_wins_topics 
+
+            pickle.dump({"id2author": {i: a for a, i in author2id.items()}}, f)
+            del author2id 
+            pickle.dump({"doc2author": doc2author}, f)
+            del doc2author
+        
+        pickle.dump({"id2word": {i: w for w, i in token2id.items()}}, f)
+        del token2id
+        pickle.dump({"id2workid": {i: d for d, i in workid2id.items()}}, f)
+        del workid2id 
+        pickle.dump({"doc2year": doc2year}, f)
+        del doc2year 
+
+        if workname_field:
+            pickle.dump({"doc2title": doc2title}, f)
+            del doc2title 
+
+        pickle.dump({"start_time": min_time}, f)
+        pickle.dump({"end_time": max_time}, f)
+        pickle.dump({"window_size": window_size}, f)
+
+    if logger:
+        logger.info(f"----- completes writing to {output_dir} ------ ")
 
 def get_top_topic_info(matrice, top_n=5):
         min_time, max_time, window_size = matrice['start_time'], matrice['end_time'], matrice['window_size']
@@ -537,157 +530,3 @@ def get_top_topic_info(matrice, top_n=5):
         data['per vocab'] = _get_prop_and_dist_helper("wwt", "id2word", top_n)
         data['per author'] = _get_prop_and_dist_helper("awt", "id2author", top_n)
         return data
-
-# from sklearn.manifold import TSNE
-# import torch 
-# import numpy as numpy
-# import bokeh.plotting as bp
-# from bokeh.plotting import save
-# from bokeh.models import HoverTool
-# import matplotlib.pyplot as plt 
-# import matplotlib 
-
-# tiny = 1e-6
-
-# def _reparameterize(mu, logvar, num_samples):
-#     """Applies the reparameterization trick to return samples from a given q"""
-#     std = torch.exp(0.5 * logvar) 
-#     bsz, zdim = logvar.size()
-#     eps = torch.randn(num_samples, bsz, zdim).to(mu.device)
-#     mu = mu.unsqueeze(0)
-#     std = std.unsqueeze(0)
-#     res = eps.mul_(std).add_(mu)
-#     return res
-
-# def get_document_frequency(data, wi, wj=None):
-#     if wj is None:
-#         D_wi = 0
-#         for l in range(len(data)):
-#             doc = data[l].squeeze(0)
-#             if len(doc) == 1: 
-#                 continue
-#                 #doc = [doc.squeeze()]
-#             else:
-#                 doc = doc.squeeze()
-#             if wi in doc:
-#                 D_wi += 1
-#         return D_wi
-#     D_wj = 0
-#     D_wi_wj = 0
-#     for l in range(len(data)):
-#         doc = data[l].squeeze(0)
-#         if len(doc) == 1: 
-#             doc = [doc.squeeze()]
-#         else:
-#             doc = doc.squeeze()
-#         if wj in doc:
-#             D_wj += 1
-#             if wi in doc:
-#                 D_wi_wj += 1
-#     return D_wj, D_wi_wj 
-
-# def get_topic_coherence(beta, data, vocab):
-#     D = len(data) ## number of docs...data is list of documents
-#     print('D: ', D)
-#     TC = []
-#     num_topics = len(beta)
-#     for k in range(num_topics):
-#         print('k: {}/{}'.format(k, num_topics))
-#         top_10 = list(beta[k].argsort()[-11:][::-1])
-#         top_words = [vocab[a] for a in top_10]
-#         TC_k = 0
-#         counter = 0
-#         for i, word in enumerate(top_10):
-#             # get D(w_i)
-#             D_wi = get_document_frequency(data, word)
-#             j = i + 1
-#             tmp = 0
-#             while j < len(top_10) and j > i:
-#                 # get D(w_j) and D(w_i, w_j)
-#                 D_wj, D_wi_wj = get_document_frequency(data, word, top_10[j])
-#                 # get f(w_i, w_j)
-#                 if D_wi_wj == 0:
-#                     f_wi_wj = -1
-#                 else:
-#                     f_wi_wj = -1 + ( numpy.log(D_wi) + numpy.log(D_wj)  - 2.0 * numpy.log(D) ) / ( numpy.log(D_wi_wj) - numpy.log(D) )
-#                 # update tmp: 
-#                 tmp += f_wi_wj
-#                 j += 1
-#                 counter += 1
-#             # update TC_k
-#             TC_k += tmp 
-#         TC.append(TC_k)
-#     print('counter: ', counter)
-#     print('num topics: ', len(TC))
-#     #TC = numpy.mean(TC) / counter
-#     print('Topic Coherence is: {}'.format(TC))
-#     return TC, counter
-
-# def log_gaussian(z, mu=None, logvar=None):
-#     sz = z.size()
-#     d = z.size(2)
-#     bsz = z.size(1)
-#     if mu is None or logvar is None:
-#         mu = torch.zeros(bsz, d).to(z.device)
-#         logvar = torch.zeros(bsz, d).to(z.device)
-#     mu = mu.unsqueeze(0)
-#     logvar = logvar.unsqueeze(0)
-#     var = logvar.exp()
-#     log_density = ((z - mu)**2 / (var+tiny)).sum(2) # b
-#     log_det = logvar.sum(2) # b
-#     log_density = log_density + log_det + d*numpy.log(2*numpy.pi)
-#     return -0.5*log_density
-
-# def logsumexp(x, dim=0):
-#     d = torch.max(x, dim)[0]   
-#     if x.dim() == 1:
-#         return torch.log(torch.exp(x - d).sum(dim)) + d
-#     else:
-#         return torch.log(torch.exp(x - d.unsqueeze(dim).expand_as(x)).sum(dim) + tiny) + d
-
-# def flatten_docs(docs): #to get words and doc_indices
-#     words = [x for y in docs for x in y]
-#     doc_indices = [[j for _ in doc] for j, doc in enumerate(docs)]
-#     doc_indices = [x for y in doc_indices for x in y]
-#     return words, doc_indices
-    
-# def onehot(data, min_length):
-#     return list(numpy.bincount(data, minlength=min_length))
-
-# def nearest_neighbors(word, embeddings, vocab, num_words):
-#     vectors = embeddings.cpu().numpy() 
-#     index = vocab.index(word)
-#     query = embeddings[index].cpu().numpy() 
-#     ranks = vectors.dot(query).squeeze()
-#     denom = query.T.dot(query).squeeze()
-#     denom = denom * numpy.sum(vectors**2, 1)
-#     denom = numpy.sqrt(denom)
-#     ranks = ranks / denom
-#     mostSimilar = []
-#     [mostSimilar.append(idx) for idx in ranks.argsort()[::-1]]
-#     nearest_neighbors = mostSimilar[:num_words]
-#     nearest_neighbors = [vocab[comp] for comp in nearest_neighbors]
-#     return nearest_neighbors
-
-# def visualize(docs, _lda_keys, topics, theta):
-#     tsne_model = TSNE(n_components=2, verbose=1, random_state=0, angle=.99, init='pca')
-#     # project to 2D
-#     tsne_lda = tsne_model.fit_transform(theta)
-#     colormap = []
-#     for name, hex in matplotlib.colors.cnames.items():
-#         colormap.append(hex)
-
-#     colormap = colormap[:len(theta[0, :])]
-#     colormap = numpy.array(colormap)
-
-#     title = '20 newsgroups TE embedding V viz'
-#     num_example = len(docs)
-
-#     plot_lda = bp.figure(plot_width=1400, plot_height=1100,
-#                      title=title,
-#                      tools="pan,wheel_zoom,box_zoom,reset,hover,previewsave",
-#                      x_axis_type=None, y_axis_type=None, min_border=1)
-
-#     plt.scatter(x=tsne_lda[:, 0], y=tsne_lda[:, 1],
-#                  color=colormap[_lda_keys][:num_example])
-#     plt.show()

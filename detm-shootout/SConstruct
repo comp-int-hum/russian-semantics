@@ -6,7 +6,6 @@ vars = Variables("custom.py")
 vars.AddVariables(
     ("OUTPUT_WIDTH", "", 5000),
     ("RANDOM_SEED", "", 0),
-    ("DATA_ROOT", "", os.path.expanduser("~/corpora")),
     ("MAX_SUBDOC_LENGTH", "", 100),
     ("MIN_WORD_COUNT", "", 10),
     ("MAX_WORD_PROPORTION", "", 0.7),
@@ -30,7 +29,9 @@ vars.AddVariables(
         0.1
     ),
     ("STUDIES", "", []),
-    ("MODEL_TYPES", "", [])
+    ("MODEL_TYPES", "", []),
+    ("USE_RAW_DATA", "", False),
+    ("GET_PROB", "", False)
 )
 
 env = Environment(
@@ -55,7 +56,10 @@ env = Environment(
             action="python scripts/generate_word_similarity_table.py --embeddings ${SOURCES[0]} --output ${TARGETS[0]} --target_words ${WORD_SIMILARITY_TARGETS} --top_neighbors ${TOP_NEIGHBORS} ${'--language_code ' + LANGUAGE_CODE if LANGUAGE_CODE else ''}"
         ),
         "GetMatrice": Builder(
-            action="python scripts/matrice.py --model ${SOURCES[0]} --input ${SOURCES[1]} --output ${TARGETS[0]} --time_field ${TIME_FIELD} --content_field ${CONTENT_FIELD} --device ${CUDA_DEVICE} --batch_size ${BATCH_SIZE}"
+            action=("python scripts/generate_matrice.py --model ${SOURCES[0]} --input ${SOURCES[1]} ${'--input_t ' + SOURCES[2].rstr() if len(SOURCES) == 3 else ''} "
+                    + "--output ${TARGETS[0]} --time_field ${TIME_FIELD} --content_field ${CONTENT_FIELD} --device ${CUDA_DEVICE} --batch_size ${BATCH_SIZE}" + 
+                    "${' --get_raw_data' if GET_RAW_DATA else ''}${' --get_prob' if GET_PROB else ''}")
+
         ),
         "GetTopTopicData": Builder(
             action="python scripts/top_dist_info.py --input ${SOURCES[0]} --output ${TARGETS[0]}"
@@ -67,7 +71,7 @@ for study in env["STUDIES"]:
 
     env = OverrideEnvironment(env, study)
     
-    data = "${DATA_ROOT}/${NAME}.jsonl.gz"
+    data = "corpora/${NAME}.jsonl.gz"
     
     # train_val_data, test_data = env.SplitData(
     #     [
@@ -93,7 +97,7 @@ for study in env["STUDIES"]:
     #    TOP_NEIGHBORS=5,
     # )
 
-    for model_type in env["MODEL_TYPES"]:
+    model_type ='xDETM'
         # env.TestForLR(['output.txt'],
         #     [
         #         train_val_data,
@@ -109,18 +113,24 @@ for study in env["STUDIES"]:
         #     MODEL_TYPE=model_type
         # )
 
-        topic_model = f"work/{env['NAME']}/{model_type}_model.bin.gz"
+    topic_model = "work/${NAME}/xDETM_model.bin.gz"
 
         # perplexity = env.ApplyModel(
         #     "work/${NAME}/${MODEL_TYPE}_perplexity.jsonl.gz",
         #     [topic_model, test_data if test_data else train_val_data],
         #     MODEL_TYPE=model_type
         # )
-
-        matrice = env.GetMatrice(
-            "work/${NAME}/${MODEL_TYPE}_all_data_by_prob_matrice.pkl.gz",
-            [topic_model, data],
-            MODEL_TYPE=model_type
+    train_data, test_data = "work/${NAME}/train_val_data.jsonl.gz", "work/${NAME}/test_data.jsonl.gz"
+    output_dir = "work/${NAME}/${MODEL_TYPE}_matrice"
+    if env['USE_RAW_DATA']:
+        output_dir += '_rawdata'
+    if env['GET_PROB']:
+        output_dir += '_prob'
+    output_dir += '.pkl.gz'
+    matrice = env.GetMatrice(
+        output_dir,
+        [topic_model, train_data, test_data],
+        MODEL_TYPE=model_type
         )
 
         # output = "output.json"

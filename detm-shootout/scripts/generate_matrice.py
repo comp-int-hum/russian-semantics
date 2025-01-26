@@ -62,7 +62,7 @@ if __name__ == "__main__":
 
     model = model.to(args.device)
     matrice = get_matrice(model, subdocs, times, auxiliaries,
-                          batch_size=args.batch_size, output_dir=args.output,
+                          batch_size=args.batch_size,
                           workid_field="htid", time_field="written_year", 
                           author_field="author_info", workname_field="title",
                           logger=logger, get_prob=args.get_prob) 

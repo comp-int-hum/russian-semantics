@@ -276,8 +276,7 @@ def apply_model(
     return (), ppl / cnt
 
 def get_matrice(model, subdocs, times, auxiliaries,
-                batch_size, output_dir,
-                workid_field, time_field, 
+                batch_size, workid_field, time_field, 
                 author_field=None, workname_field=None,
                 logger=None, get_prob=False,
                 detect_anomalies=False):

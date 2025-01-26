@@ -401,7 +401,7 @@ def get_matrice(model, subdocs, times, auxiliaries,
     del docs             
 
     if logger:
-        logger.info(f"----- completes getting matrice. writing to {output_dir}------ ")
+        logger.info(f"----- completes getting matrice. Returning ------ ")
     
     return {
         "word_win_top": words_wins_topics,

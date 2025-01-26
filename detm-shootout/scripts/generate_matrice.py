@@ -1,4 +1,4 @@
-import logging, gzip, json, argparse, torch, pickle, re, math
+import logging, gzip, json, argparse, torch, pickle, re, math, numpy
 from tqdm import tqdm
 from detm import Corpus, get_matrice
 
@@ -49,9 +49,9 @@ if __name__ == "__main__":
                 corpus.append(j)
     else:
         # this should include both train, val and test
-        # with gzip.open(args.input, "rt") as ifd:
-        #     for line in tqdm(ifd):
-        #         corpus.append(json.loads(line))
+        with gzip.open(args.input, "rt") as ifd:
+            for line in tqdm(ifd):
+                corpus.append(json.loads(line))
             
         if args.input_t:
             with gzip.open(args.input_t, "rt") as ifd:
@@ -61,8 +61,11 @@ if __name__ == "__main__":
     subdocs, times, auxiliaries = corpus.filter_for_model(model, args.content_field, args.time_field)
 
     model = model.to(args.device)
-    get_matrice(model, subdocs, times, auxiliaries, args.output,
-                batch_size=args.batch_size,
-                workid_field="htid", time_field="written_year", 
-                author_field="author_info", workname_field="title",
-                logger=logger, get_prob=args.get_prob)
+    matrice = get_matrice(model, subdocs, times, auxiliaries,
+                          batch_size=args.batch_size, output_dir=args.output,
+                          workid_field="htid", time_field="written_year", 
+                          author_field="author_info", workname_field="title",
+                          logger=logger, get_prob=args.get_prob) 
+
+    with gzip.open(args.output, "wb") as ofd:
+        ofd.write(pickle.dumps(matrice))

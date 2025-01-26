@@ -1,6 +1,7 @@
-import copy, logging, random, torch, math, numpy, gzip, pickle
+import copy, logging, random, torch, math, numpy, gzip, json
 from tqdm import tqdm
 from torch import autograd
+from collections import defaultdict
 
 logger = logging.getLogger("utils")
 
@@ -148,23 +149,14 @@ def train_model(
 
     return best_state
 
-def test_for_lr(
-        subdocs,
-        times,
-        model_class,
-        word_list,
-        min_time, max_time,
+def test_for_lr(subdocs, times, model_class,
+        word_list, min_time, max_time,
         num_topics, window_size,
         learning_rate, wdecay,
-        embeddings,
-        clip=2.0,
-        lr_factor=2.0,
-        batch_size=32,
-        device="cpu",
-        optimizer_type='adam',
-        val_proportion=0.2,
-        detect_anomalies=False
-):
+        embeddings, clip=2.0,
+        lr_factor=2.0, batch_size=32,
+        device="cpu", optimizer_type='adam',
+        val_proportion=0.2, detect_anomalies=False):
     
     # initialize data
     pairs = list(zip(subdocs, times))
@@ -258,13 +250,10 @@ def test_for_lr(
     return learning_rate
 
 def apply_model(
-        model,
-        subdocs,
-        times,
-        batch_size=32,
-        device="cpu",
-        detect_anomalies=False
-):
+        model, subdocs, times, 
+        batch_size=32, detect_anomalies=False
+        ):
+    
     model.train(False)
     model.prepare_for_data(subdocs, times)
 
@@ -287,7 +276,7 @@ def apply_model(
     return (), ppl / cnt
 
 def get_matrice(model, subdocs, times, auxiliaries,
-                output_dir, batch_size,
+                batch_size, output_dir,
                 workid_field, time_field, 
                 author_field=None, workname_field=None,
                 logger=None, get_prob=False,
@@ -355,15 +344,13 @@ def get_matrice(model, subdocs, times, auxiliaries,
         if workname_field:
             doc2title[workid] = auxiliary[workname_field]
         
-
     # print(window_rangs)
     nwins, nwords, ntopics, nauths, ndocs = (math.ceil((max_time - min_time) / window_size), 
                                              len(token2id), num_topics, 
                                              len(unique_authors), len(docs))
     
     workid2id = {d : i for i, d in enumerate(docs.keys())}
-    time2window = {}
-    
+  
     if author_field:
         author2id = {a : i for i, a in enumerate(unique_authors)}
 
@@ -375,14 +362,14 @@ def get_matrice(model, subdocs, times, auxiliaries,
 
     words_wins_topics = numpy.zeros(shape=(nwords, nwins, ntopics))
     works_wins_topics = numpy.zeros(shape=(ndocs, nwins, ntopics))
-    works_words_topics = numpy.zeros(shape=(ndocs, nwords, ntopics))
+    works_words_topics = defaultdict(float)
 
     if author_field:
         auths_wins_topics = numpy.zeros(shape=(nauths, nwins, ntopics))
-        auths_words_topics = numpy.zeros(shape=(nauths, nwords, ntopics))
+        auths_words_topics = defaultdict(float)
 
     for workid, subdocs in docs.items():
-        win = (doc2year[workid] - min_time) // window_size
+        win = int((doc2year[workid] - min_time) // window_size)
         idx = workid2id[workid]
         
         for subdoc in subdocs:
@@ -390,65 +377,98 @@ def get_matrice(model, subdocs, times, auxiliaries,
                 if get_prob and isinstance(topic, numpy.ndarray):
                     words_wins_topics[wid, win] += topic
                     works_wins_topics[idx, win] += topic
-                    works_words_topics[idx, wid] += topic
+
+                    for tid, prob in enumerate(topic):
+                        if prob > 0:
+                            works_words_topics[(idx, wid, tid)] += prob
 
                     if author_field:
                         aid = author2id[doc2author[workid]]
-                        auths_words_topics[aid, wid] += topic
                         auths_wins_topics[aid, win] += topic
+                        for tid, prob in enumerate(topic):
+                            if prob > 0:
+                                auths_words_topics[(aid, wid, tid)] += prob
 
                 elif (not get_prob) and topic != None:
                     words_wins_topics[wid, win, topic] += 1
                     works_wins_topics[idx, win, topic] += 1
-                    works_words_topics[idx, wid, topic] += 1
+                    works_words_topics[(idx, wid, topic)] += 1
 
                     if author_field:
                         aid = author2id[doc2author[workid]]
-                        auths_words_topics[aid, wid, topic] += 1
+                        auths_words_topics[(aid, wid, topic)] += 1
                         auths_wins_topics[aid, win, topic] += 1
     
     del docs             
 
     if logger:
-        logger.info(f"----- completes getting matrice. Writing matrice to {output_dir} ------ ")
+        logger.info(f"----- completes getting matrice. writing to {output_dir}------ ")
+    
+    return {
+        "word_win_top": words_wins_topics,
+        "work_win_top": works_wins_topics,
+        "work_word_top": works_words_topics,
+        "auth_word_top": auths_words_topics if author_field else None,
+        "auth_win_top": auths_wins_topics if author_field else None,
+        "id2author": {i: a for a, i in author2id.items()} if author_field else None,
+        "doc2author": doc2author if author_field else None,
+        "id2word": {i: w for w, i in token2id.items()},
+        "id2workid": {i: d for d, i in workid2id.items()},
+        "doc2year": doc2year,
+        "doc2title": doc2title if workname_field else None,
+        "start_time": min_time,
+        "end_time": max_time,
+        "window_size": window_size
+    }
 
-    with gzip.open(output_dir, 'wb') as f:
-
-        pickle.dump({"word_win_top": words_wins_topics}, f)
+    with gzip.open(output_dir, 'wt', encoding='utf-8') as ifd:
+        json.dump({"word_win_top": words_wins_topics.tolist()}, ifd)
+        ifd.write('\n')
         del words_wins_topics
-        pickle.dump({"work_win_top": works_wins_topics}, f)
+        json.dump({"work_win_top": works_wins_topics.tolist()}, ifd)
+        ifd.write('\n')
         del works_wins_topics
-        pickle.dump({"work_word_top": works_words_topics}, f)
+        json.dump({"work_word_top": works_words_topics}, ifd)
+        ifd.write('\n')
         del works_words_topics
 
         if author_field:
-            pickle.dump({"auth_word_top": auths_words_topics}, f)
-            del auths_words_topics 
-            pickle.dump({"auth_win_top": auths_wins_topics}, f)
-            del auths_wins_topics 
-
-            pickle.dump({"id2author": {i: a for a, i in author2id.items()}}, f)
-            del author2id 
-            pickle.dump({"doc2author": doc2author}, f)
+            json.dump({"auth_word_top": auths_words_topics}, ifd)
+            ifd.write('\n')
+            del auths_words_topics
+            json.dump({"auth_win_top": auths_wins_topics.tolist()}, ifd)
+            ifd.write('\n')
+            del auths_wins_topics
+            json.dump({"id2author": {i: a for a, i in author2id.items()}}, ifd)
+            ifd.write('\n')
+            del author2id
+            json.dump({"doc2author": doc2author}, ifd)
+            ifd.write('\n')
             del doc2author
-        
-        pickle.dump({"id2word": {i: w for w, i in token2id.items()}}, f)
+
+        json.dump({"id2word": {i: w for w, i in token2id.items()}}, ifd)
+        ifd.write('\n')
         del token2id
-        pickle.dump({"id2workid": {i: d for d, i in workid2id.items()}}, f)
-        del workid2id 
-        pickle.dump({"doc2year": doc2year}, f)
-        del doc2year 
-
+        json.dump({"id2workid": {i: d for d, i in workid2id.items()}}, ifd)
+        ifd.write('\n')
+        del workid2id
+        json.dump({"doc2year": doc2year}, ifd)
+        ifd.write('\n')
+        del doc2year
         if workname_field:
-            pickle.dump({"doc2title": doc2title}, f)
-            del doc2title 
+            json.dump({"doc2title": doc2title}, ifd)
+            ifd.write('\n')
+            del doc2title
 
-        pickle.dump({"start_time": min_time}, f)
-        pickle.dump({"end_time": max_time}, f)
-        pickle.dump({"window_size": window_size}, f)
+        json.dump({"start_time": min_time}, ifd)
+        ifd.write('\n')
+        json.dump({"end_time": max_time}, ifd)
+        ifd.write('\n')
+        json.dump({"window_size": window_size}, ifd)
+        ifd.write('\n')
 
     if logger:
-        logger.info(f"----- completes writing to {output_dir} ------ ")
+        logger.info(f"----- Completes writing to matrice. Returning ------ ")
 
 def get_top_topic_info(matrice, top_n=5):
         min_time, max_time, window_size = matrice['start_time'], matrice['end_time'], matrice['window_size']

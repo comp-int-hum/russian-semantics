@@ -4,6 +4,8 @@ from SCons.Environment import OverrideEnvironment
 
 vars = Variables("custom.py")
 vars.AddVariables(
+    ("CORPORA_ROOT", "", "corpora"),
+    ("DATA_ROOT", "", "work"),
     ("OUTPUT_WIDTH", "", 5000),
     ("RANDOM_SEED", "", 0),
     ("MAX_SUBDOC_LENGTH", "", 100),
@@ -71,74 +73,27 @@ for study in env["STUDIES"]:
 
     env = OverrideEnvironment(env, study)
     
-    data = "/home/tlippin1/corpora/${NAME}.jsonl.gz"
-    
-    rain_val_data, test_data = env.SplitData(
-        [
-           "work/${NAME}/train_val_data.jsonl.gz",
-           "work/${NAME}/test_data.jsonl.gz"
-       ],
-        data,
-        PROPORTION=env["TEST_PROPORTION"]
-    )
+    data = "${CORPORA_ROOT}/${NAME}.jsonl.gz"
+    train_val_data = "${DATA_ROOT}/${NAME}/train_val_data.jsonl.gz"
+    test_data = "${DATA_ROOT}/${NAME}/test_data.jsonl.gz"
+    # env.SplitData([train_val_data, test_data], data, PROPORTION=env["TEST_PROPORTION"])
 
-    train_val_data = "work/${NAME}/train_val_data.jsonl.gz"
+    embeddings = "${DATA_ROOT}/${NAME}/embeddings.bin.gz"
+    # env.TrainEmbeddings(embeddings, train_val_data)
 
-    embeddings = env.TrainEmbeddings(
-        "work/${NAME}/embeddings.bin.gz",
-        train_val_data
-    )
+    word_similarity_table = "work/${NAME}/word_similarity.tex"
+    # env.GenerateWordSimilarityTable(word_similarity_table, embeddings, TOP_NEIGHBORS=5,)
 
-    train_val_data = "work/${NAME}/train_val_data.jsonl.gz"
-    test_data = "work/${NAME}/test_data.jsonl.gz"
-    embeddings = "work/${NAME}/embeddings.bin.gz"
+    topic_model = "work/${NAME}/${MODEL_TYPE}_model.bin.gz"
+    env.TrainModel(topic_model, [train_val_data, embeddings])
 
-    # word_similarity_table = env.GenerateWordSimilarityTable(
-    #    "work/${NAME}/word_similarity.tex",        
-    #    embeddings,       
-    #    TOP_NEIGHBORS=5,
-    # )
+    perplexity = "work/${NAME}/${MODEL_TYPE}_perplexity.jsonl.gz"
+    # env.ApplyModel(perplexity, [topic_model, test_data if test_data else train_val_data])
 
-    model_type ='xDETM'
-    # env.TestForLR(['output.txt']
-    #     [
-    #         train_val_data,
-    #         embeddings
-    #     ],
-    #     MODEL_TYPE=model_type)
-        
-    topic_model = env.TrainModel(
-        "work/${NAME}/${MODEL_TYPE}_model.bin.gz",
-        [
-            train_val_data,
-            embeddings
-        ],
-        MODEL_TYPE=model_type
-    )
-
-    # topic_model = "work/${NAME}/xDETM_model.bin.gz"
-
-        # perplexity = env.ApplyModel(
-        #     "work/${NAME}/${MODEL_TYPE}_perplexity.jsonl.gz",
-        #     [topic_model, test_data if test_data else train_val_data],
-        #     MODEL_TYPE=model_type
-        # )
-    # train_data, test_data = "work/${NAME}/train_val_data.jsonl.gz", "work/${NAME}/test_data.jsonl.gz"
-    # output_dir = "work/${NAME}/${MODEL_TYPE}_matrice"
-    # if env['USE_RAW_DATA']:
-    #     output_dir += '_rawdata'
-    # if env['GET_PROB']:
-    #     output_dir += '_prob'
-    # output_dir += '.pkl.gz'
-    # matrice = env.GetMatrice(
-    #     output_dir,
-    #     [topic_model, train_data, test_data],
-    #     MODEL_TYPE=model_type
-    #    )
-
-        # output = "output.json"
-
-        # output_json = env.GetTopTopicData(
-        #     [output],
-         #    [matrice]
-        # )
+    matrice = "work/${NAME}/${MODEL_TYPE}_matrice"
+    if env['USE_RAW_DATA']:
+        matrice += '_rawdata'
+    if env['GET_PROB']:
+        matrice += '_prob'
+    matrice += '.pkl.gz'
+    # env.GetMatrice(matrice, [topic_model, train_val_data, test_data])

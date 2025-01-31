@@ -5,6 +5,7 @@ import json
 import argparse
 import numpy
 import torch
+import math
 from detm import Corpus, train_model, load_embeddings
 import detm
 
@@ -22,10 +23,9 @@ if __name__ == "__main__":
     parser.add_argument("--content_field", dest="content_field", help="")
     parser.add_argument("--min_time", type=int, default=None)
     parser.add_argument("--max_time", type=int, default=None)
-    #parser.add_argument("--lowercase", dest="lowercase", default=False, action="store_true", help="Whether to lower-case all text")
     parser.add_argument("--output", dest="output", help="File to save model to", required=True)
-    #parser.add_argument("--max_subdoc_length", dest="max_subdoc_length", type=int, default=200, help="Documents will be split into at most this length for training (this determines what it means for words to be 'close')")
     parser.add_argument("--window_size", dest="window_size", type=int, default=20, help="")
+    parser.add_argument("--num_window", dest="num_window", type=int, default=-1)
     parser.add_argument("--min_word_count", dest="min_word_count", type=int, default=0, help="Words occuring less than this number of times throughout the entire dataset will be ignored")
     parser.add_argument("--max_word_proportion", dest="max_word_proportion", type=float, default=1.0, help="Words occuring in more than this proportion of documents will be ignored (probably conjunctions, etc)")    
     
@@ -39,7 +39,6 @@ if __name__ == "__main__":
     parser.add_argument('--eval_batch_size', type=int, default=1000, help='input batch size for evaluation')
     parser.add_argument('--load_from', type=str, default='', help='the name of the ckpt to eval from')
     parser.add_argument('--tc', type=int, default=0, help='whether to compute tc or not')
-    
     
     parser.add_argument('--learning_rate', dest="learning_rate", type=float, default=0.0001, help='learning rate')
     parser.add_argument('--lr_factor', type=float, default=2.0, help='divide learning rate by this')
@@ -69,7 +68,9 @@ if __name__ == "__main__":
     parser.add_argument('--train_proportion', type=float, default=0.7, help='')
     parser.add_argument("--model_type", dest="model_type", required=True)
     args = parser.parse_args()
-    
+
+    # either specify the number of window wanted or window required
+    assert args.num_window == -1 or args.window_size == -1
     logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
     model_class = getattr(detm, args.model_type)
@@ -91,26 +92,34 @@ if __name__ == "__main__":
     with gzip.open(args.train, "rt") as ifd:
         for i, line in enumerate(ifd):
             corpus.append(json.loads(line))
-    
-    min_time = args.min_time if args.min_time else 0
-    max_time = args.max_time if args.max_time else 9999
 
-    subdocs, times, word_list = corpus.get_filtered_subdocs(
+    subdocs, times, word_list, time_reg = corpus.get_filtered_subdocs(
         content_field=args.content_field,
         time_field=args.time_field,
-        time_reg=(min_time, max_time),
+        time_reg= (args.min_time, args.max_time),
         min_word_count=args.min_word_count,
         max_word_proportion=args.max_word_proportion,
     )
+
+    logger.info(f"specified time duration: {time_reg}")
     
+
+    if args.window_size == -1:
+        # try to get the window size
+        args.window_size = math.ceil((time_reg[1] - time_reg[0]) / args.num_window)
+    time_range = [(time_reg[0] + idx * args.window_size, 
+                   time_reg[0] + (idx + 1) * args.window_size if time_reg[0] + (idx + 1) * args.window_size < time_reg[1] else time_reg[1])
+                   for idx in range(math.ceil((time_reg[1] - time_reg[0]) / args.window_size))]
+    logger.info(f"setting windows to be {time_range}")
+
     embeddings = load_embeddings(args.embeddings)
     
     model = model_class(
         word_list=word_list,
-        num_topics=args.num_topics,
-        window_size=args.window_size,
-        min_time=min(times) if min_time == 0 else min_time,
-        max_time=max(times) if max_time == 9999 else max_time,
+        num_topics= args.num_topics,
+        window_size= args.window_size,
+        min_time= time_reg[0],
+        max_time= time_reg[1],
         embeddings=embeddings,
     )
     
@@ -141,7 +150,7 @@ if __name__ == "__main__":
         detect_anomalies=False
     )
     
-    model.load_state_dict(best_state)
+    # model.load_state_dict(best_state)
     
-    with gzip.open(args.output, "wb") as ofd:
-        torch.save(model, ofd)
+    # with gzip.open(args.output, "wb") as ofd:
+    #     torch.save(model, ofd)

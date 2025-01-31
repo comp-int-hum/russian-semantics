@@ -1,4 +1,4 @@
-import argparse, logging, gzip, pickle, json, numpy
+import argparse, logging, gzip, pickle, json, numpy, re
 from tqdm import tqdm
 
 logger = logging.getLogger("order_by_auth")
@@ -32,35 +32,22 @@ if __name__ == '__main__':
     # read input
     if args.input_dir.endswith('.gz'):
         ungziped_input_dir : str = args.input_dir[:-3]
-        with gzip.open(args.input_dir, "rb") as ifd:
-            
-            if ungziped_input_dir.endswith('.pkl'):
-                data = {}
-                while True:
-                    try:
-                        item = pickle.load(ifd)
-                        key = list(item.keys())[0]
-                        if key in [args.author_field, args.embedding_field, args.id2author_field]:
-                            data[key] = item[key]
-                        del item
-                    except EOFError:
-                        break
-            
-            elif ungziped_input_dir.endswith('.jsonl'):
-                data = []
+        if ungziped_input_dir.endswith('.pkl'): 
+            with gzip.open(args.input_dir, "rb") as ifd:
+                data = pickle.load(ifd)
+        elif ungziped_input_dir.endswith('.jsonl'):
+            data = []
+            with gzip.open(args.input_dir, "rt") as ifd:
                 for i, line in tqdm(enumerate(ifd)):
                     data.append(json.loads(line))
-            
             else:
                 raise Exception("unidentifiable source of input")
     
     elif args.input_dir.endswith('.csv'):
         data = numpy.loadtxt(args.input_dir, delimiter=',')
+
     
-    print(data.keys())
-    exit(0)
-    
-    if args.id2auth_dir.endswith('.json'):
+    if args.id2auth_dir:
         with open(args.id2auth_dir, 'r') as f:
             id2auth = json.load(f)
     else:
@@ -68,11 +55,11 @@ if __name__ == '__main__':
         assert isinstance(data, dict)
         id2auth = data[args.id2author_field]
 
-    id2auth = {int(k): v for k, v in id2auth.items()}
+    id2auth = {int(k): re.sub(r' \[-\] ', r' ', v) for k, v in id2auth.items()}
     id2auth = dict(sorted(id2auth.items()))
     auth2id = {v: k for k, v in id2auth.items()}
 
-    if args.id2auth_output_dir.endswith('.json'):
+    if args.id2auth_output_dir:
         with open(args.id2auth_output_dir, 'w') as f:
             json.dump(id2auth, f, indent=4, ensure_ascii=False)
 

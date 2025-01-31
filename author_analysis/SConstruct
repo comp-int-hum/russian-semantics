@@ -4,11 +4,18 @@ from SCons.Environment import OverrideEnvironment
 
 vars = Variables("custom.py")
 vars.AddVariables(
-    ("DATA_ROOT", "", "data"),
+    ("MATRICE_DATA", "", []),
+    ("GLOBAL_DATA_DIR", "", "/home/zxia15/data_zxia15/russian-semantics/work/russian/"),
+    ("MATRIX_DIR", "", ""),
+    ("EMBEDDING_DIR", "", "embeddings.bin.gz"),
+    ("DATA_ROOT", "", ""),
 
     # id2author
     ("ID2AUTH", "", "id2author.json"),
     ("ID2AUTH_INTEREST", "", "filtered_id2author.json"),
+
+    #id2word
+    ("ID2WORD", "", "id2word.json"),
 
     # author vocab embeddings
     ("AUTH_VOCAB_EMBEDS", "", "auth_vocab_embeds.csv"),
@@ -21,14 +28,14 @@ vars.AddVariables(
 
     # steps on the way
     ("PRELOAD_EMBED", "", False),
+    ("TOPIC_VOCAB_VIS", "", False),
+    ("AUTH_TOPIC_EMBED", "", False),
     ("PRELOAD_MATRICE", "", False),
     ("GENERATE_TABULAR_IMAGE", "", False),
     ("GENERATE_CLUSTER", "", False),
 
     # order by auth info
-    ("GLOBAL_DATA_DIR", "", "/home/zxia15/data_zxia15/russian-semantics/work/russian/"),
-    ("MATRIX_DIR", "", "xDETM_all_data_matrice.pkl.gz"),
-    ("MATRIX_AUTHOR_FIELD", "", "awt"), # author_window_time
+    ("AUTHORS_WINDOWS_TOPICS", "", "auth_win_top"), # author_window_time
     ("AUTHOR_COUNTER_DIR", "", "author_vocab_counter.jsonl.gz"),
     ("AUTHOR_EMBED_DIR", "", "author_embeddings.jsonl.gz"),
     ("EMBED_AUTHOR_FIELD", "", "author"),
@@ -39,76 +46,99 @@ vars.AddVariables(
 
     # generate auth2auth cluster info
     ("CLUSTER_AUTH", "", []),
-    ("JS_CLUSTER_IMAGE_DIR", "", "images/author_topic_dist_cluster.png"),
-    ("JS_CLUSTER_DATA_DIR", "", "data/author_topic_dist_cluster.txt"),
+    ("JS_CLUSTER_IMAGE_DIR_ALL", "", "images/author_topic_dist_cluster_all.png"),
+    ("JS_CLUSTER_DATA_DIR_ALL", "", "author_topic_dist_cluster_all.txt"),
+    ("JS_CLUSTER_IMAGE_DIR_ALL", "", "images/author_topic_dist_cluster_filter.png"),
+    ("JS_CLUSTER_DATA_DIR_ALL", "", "author_topic_dist_cluster_filter.txt"),
 )
 
 env = Environment(
     variables=vars,
     BUILDERS={
         "OrderByAuth" : Builder(
-            action=("python scripts/order_by_auth.py --input_dir ${SOURCES} --id2auth_dir ${ID2AUTH_DIR} " + 
-                    "--output_dir ${TARGETS} --id2auth_output_dir ${ID2AUTH_OUTPUT_DIR} --embed_size ${EMBED_SIZE} " +
+            action=("python scripts/order_by_auth.py --input_dir ${SOURCES[0]}${' --id2auth_dir ' + SOURCES[1].rstr() if len(SOURCES) == 2 else ''} " + 
+                    "--output_dir ${TARGETS[0]}${' --id2auth_output_dir ' + TARGETS[1].rstr() if len(TARGETS) == 2 else ''} --embed_size ${EMBED_SIZE} " +
                     "--author_field ${AUTHOR_FIELD}")
         ),
+        "CreateAuthEmbed": Builder(
+            action= "python scripts/create_author_embed_per_topic.py --input_dir ${SOURCES[0]} --embedding_dir ${SOURCES[1]} --id2author ${SOURCES[2]} --id2word ${SOURCES[3]}"
+        ),
+        "VisualizeTopicVocab": Builder(
+            action="python scripts/visualize_vocab_evolution.py --input_dir ${SOURCES[0]} --output_dir ${TARGETS[0]} --id2word_output_dir ${TARGETS[1]}"
+        ),
         "GetAuth2Auth" : Builder(
-            action=("python scripts/get_auth2auth_matrix.py --input_dir ${SOURCES} --output_dir ${TARGETS} --mode ${MODE}")
+            action=("python scripts/get_auth2auth_matrix.py --input_dir ${SOURCES[0]} --output_dir ${TARGETS[0]} --mode ${MODE}")
         ),
         "GenerateAuth2AuthImg": Builder(
-            action=("python scripts/generate_auth2auth_img.py --input_dir ${SOURCES[0]} --id2auth ${SOURCES[1]} --output_dir ${TARGETS} --filtered_author '${AUTH_ARR}'")
+            action=("python scripts/generate_auth2auth_img.py --input_dir ${SOURCES[0]} --id2auth ${SOURCES[1]} --output_dir ${TARGETS[0]} --filtered_author \"${AUTH_ARR}\"")
         ),
         "GenerateAuth2AuthCluster": Builder(
-            action=("python scripts/generate_auth2auth_cluster.py --input_dir ${SOURCES[0]} --id2auth ${SOURCES[1]} --img_output_dir ${TARGETS[0]} --data_output_dir ${TARGETS[1]} --filter_auth \"${AUTH_ARR}\"")
+            action=("python scripts/generate_auth2auth_cluster.py --input_dir ${SOURCES[0]} --id2auth ${SOURCES[1]} --data_root ${DATA_ROOT} --output_dir ${TARGETS[0]} --which_to_fit ${WHICH_TO_FIT} --filter_auth \"${AUTH_ARR}\"")
         )
     }
 )
 
+for instance in env['MATRICE_DATA']:
+    env = OverrideEnvironment(env, instance)
 
-if not env['PRELOAD_EMBED']:
+    if not env['PRELOAD_EMBED']:
      
-    auth_topic_emb = env.OrderByAuth(
-       "${DATA_ROOT}/${AUTH_TOPIC_DIST}",
-       '${GLOBAL_DATA_DIR}/${MATRIX_DIR}',
-       EMBED_SIZE=15,
-       ID2AUTH_OUTPUT_DIR = '${DATA_ROOT}/${ID2AUTH}',
-       ID2AUTH_DIR = 'DUMMY',
-       AUTHOR_FIELD = '${MATRIX_AUTHOR_FIELD}'
-    )
+        auth_topic_emb, id2auth_dir = env.OrderByAuth(
+            ["${DATA_ROOT}/${AUTH_TOPIC_DIST}", "${DATA_ROOT}/${ID2AUTH}"],
+            ["${GLOBAL_DATA_DIR}/${MATRICE_DIR}"],
+            EMBED_SIZE=15,
+            AUTHOR_FIELD = '${AUTHORS_WINDOWS_TOPICS}',
+            )
 
-else:
-    auth_topic_emb = "${DATA_ROOT}/${AUTH_TOPIC_DIST}"
+    else:
+        auth_topic_emb = "${DATA_ROOT}/${AUTH_TOPIC_DIST}"
+        id2auth_dir = "${DATA_ROOT}/${ID2AUTH}"
+    
+    if not env['TOPIC_VOCAB_VIS']:
 
-id2auth_dir = '${DATA_ROOT}/${ID2AUTH}'
+        _, id2word_dir = env.VisualizeTopicVocab(
+            ['${DATA_ROOT}/images/Topic_Top_Vocab_[num].png', "${DATA_ROOT}/${ID2WORD}"],
+            ["${GLOBAL_DATA_DIR}/${MATRICE_DIR}"]
+            )
+    
+    else:
+        id2word_dir = "${DATA_ROOT}/${ID2WORD}"
+    
+    if not env['AUTH_TOPIC_EMBED']:
+        env.CreateAuthEmbed(
+            ["text.txt"],
+            ["${GLOBAL_DATA_DIR}/${MATRICE_DIR}", '${GLOBAL_DATA_DIR}/${EMBEDDING_DIR}', 
+            id2auth_dir, id2word_dir]
+        )
 
-if not env['PRELOAD_MATRICE']:
+    if not env['PRELOAD_MATRICE']:
 
-    auth_topic_js = env.GetAuth2Auth(
-        '${DATA_ROOT}/${AUTH_TOPIC_DIST_JSDIV}',
-        auth_topic_emb,
-        MODE='js'
-    )
-else:
-    auth_topic_js = '${DATA_ROOT}/${AUTH_TOPIC_DIST_JSDIV}'
+        auth_topic_js = env.GetAuth2Auth(
+            ['${DATA_ROOT}/${AUTH_TOPIC_DIST_JSDIV}'],
+            [auth_topic_emb],
+            MODE='js'
+        )
+    else:
+        auth_topic_js = '${DATA_ROOT}/${AUTH_TOPIC_DIST_JSDIV}'
 
-if env['GENERATE_TABULAR_IMAGE']:
-    env.GenerateAuth2AuthImg(
-        '${JS_IMAGE_DIR}',
-        [auth_topic_js, id2auth_dir],
-        AUTH_ARR = ';'.join(env['TABULAR_AUTH'])
-    )
+    if env['GENERATE_TABULAR_IMAGE']:
+        env.GenerateAuth2AuthImg(
+            ['${DATA_ROOT}/${JS_IMAGE_DIR}'],
+            [auth_topic_js, id2auth_dir],
+            AUTH_ARR = ';'.join(env['TABULAR_AUTH'])
+        )
 
-if env['GENERATE_CLUSTER']:
-    env.GenerateAuth2AuthCluster(
-        ['${JS_CLUSTER_IMAGE_DIR}', '${JS_CLUSTER_DATA_DIR}'],
-        [auth_topic_emb, id2auth_dir],
-        AUTH_ARR = ';'.join(env['CLUSTER_AUTH'])
-    )
+    if env['GENERATE_CLUSTER']:
+        env.GenerateAuth2AuthCluster(
+            ['${DATA_ROOT}/generate_auth2auth_cluster_all.txt'],
+            [auth_topic_emb, id2auth_dir],
+            AUTH_ARR = ';'.join(env['CLUSTER_AUTH']),
+            WHICH_TO_FIT = 'all'
+        )
 
-
-
-
-
-
-
-
-
+        env.GenerateAuth2AuthCluster(
+            ['${DATA_ROOT}/generate_auth2auth_cluster_filter.txt'],
+            [auth_topic_emb, id2auth_dir],
+            AUTH_ARR = ';'.join(env['CLUSTER_AUTH']),
+            WHICH_TO_FIT = 'filter'
+        )

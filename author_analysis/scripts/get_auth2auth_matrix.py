@@ -1,7 +1,7 @@
 import argparse, numpy
 from scipy.spatial.distance import jensenshannon
 from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
-
+from tqdm import tqdm
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -20,7 +20,7 @@ if __name__ == '__main__':
     if args.mode == 'js':
         out_data = numpy.zeros((num_auth, num_auth))
 
-        for auth1 in range(num_auth):
+        for auth1 in tqdm(range(num_auth)):
             for auth2 in range(auth1, num_auth):
                 data1, data2 = in_data[auth1], in_data[auth2]
                 avg = 0.5 * (data1 + data2)

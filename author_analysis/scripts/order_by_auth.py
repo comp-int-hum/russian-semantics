@@ -26,7 +26,7 @@ if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
     
     # either the id2auth is known or needs to be extracted from pickle
-    # assert not args.id2auth_dir or not args.id2auth_output_dir
+    assert not args.id2auth_dir or not args.id2auth_output_dir
     assert args.output_dir.endswith('.csv')
 
     # read input
@@ -40,47 +40,51 @@ if __name__ == '__main__':
             with gzip.open(args.input_dir, "rt") as ifd:
                 for i, line in tqdm(enumerate(ifd)):
                     data.append(json.loads(line))
-            else:
-                raise Exception("unidentifiable source of input")
+               
+        else:
+            raise Exception("unidentifiable source of input")
     
     elif args.input_dir.endswith('.csv'):
         data = numpy.loadtxt(args.input_dir, delimiter=',')
+    else:
+        raise Exception("unidentifiable source of input")
 
+    logger.info(f"there are {len(data)} unique author instances")
     
     if args.id2auth_dir:
         with open(args.id2auth_dir, 'r') as f:
             id2auth = json.load(f)
+        id2auth = {int(k): v for k, v in id2auth.items()}
+        id2auth = dict(sorted(id2auth.items()))
+
     else:
-        # must be a dictionary to get the auth2id data
-        assert isinstance(data, dict)
-        id2auth = data[args.id2author_field]
-
-    id2auth = {int(k): re.sub(r' \[-\] ', r' ', v) for k, v in id2auth.items()}
-    id2auth = dict(sorted(id2auth.items()))
-    auth2id = {v: k for k, v in id2auth.items()}
-
-    if args.id2auth_output_dir:
+        assert isinstance(data, list)
+        auth_names = [auth_instance[args.author_field] for auth_instance in data]
+        id2auth = {k : v for k, v in enumerate(auth_names)}
         with open(args.id2auth_output_dir, 'w') as f:
             json.dump(id2auth, f, indent=4, ensure_ascii=False)
-
-    # the first is for ordering by embed_size,
-    # the second is for ordering by auth2auth matrix
+    
+    auth2id = {v: k for k, v in id2auth.items()}
 
     # try to parse input
     if isinstance(data, list):
-        # it it is a list, then needs to extract the embedding of each 
-        # and correspond to the author idx
         numpy_embeds = numpy.zeros((len(id2auth), args.embed_size))
 
         check_bool = [False] * len(auth2id)
         for data_instance in tqdm(data):
             author_name = data_instance[args.author_field]
             if author_name in auth2id:
-                numpy_embeds[auth2id[author_name]] = numpy.array(data_instance[args.embedding_field])
+                full_data = numpy.array(data_instance[args.embedding_field])
+                topic_embed_sum = full_data.sum(0)
+                topic_count_sum = full_data.sum()
+                if round(topic_count_sum) == 0:
+                    continue
+                topic_embed_sum /= topic_count_sum
+                numpy_embeds[auth2id[author_name]] = topic_embed_sum
                 check_bool[auth2id[author_name]] = True
             else:
                 logger.info(f"unable to find author name {author_name}, skipping... ")
-        
+
         missing_authors = [author for author, included in zip(id2auth.values(), check_bool) if not included]
         logger.info(f"Completes list, missing {len(missing_authors)} authors: {missing_authors}")
 

@@ -102,7 +102,6 @@ if __name__ == "__main__":
     )
 
     logger.info(f"specified time duration: {time_reg}")
-    
 
     if args.window_size == -1:
         # try to get the window size
@@ -111,9 +110,9 @@ if __name__ == "__main__":
                    time_reg[0] + (idx + 1) * args.window_size if time_reg[0] + (idx + 1) * args.window_size < time_reg[1] else time_reg[1])
                    for idx in range(math.ceil((time_reg[1] - time_reg[0]) / args.window_size))]
     logger.info(f"setting windows to be {time_range}")
-
-    embeddings = load_embeddings(args.embeddings)
     
+    embeddings = load_embeddings(args.embeddings)
+
     model = model_class(
         word_list=word_list,
         num_topics= args.num_topics,
@@ -150,7 +149,7 @@ if __name__ == "__main__":
         detect_anomalies=False
     )
     
-    # model.load_state_dict(best_state)
+    model.load_state_dict(best_state)
     
-    # with gzip.open(args.output, "wb") as ofd:
-    #     torch.save(model, ofd)
+    with gzip.open(args.output, "wb") as ofd:
+        torch.save(model, ofd)

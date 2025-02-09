@@ -15,6 +15,7 @@ if __name__ == '__main__':
     parser.add_argument("-ia", '--id2auth_dir', type=str, required=True)
     parser.add_argument('-o', '--output_dir', type=str, required=True)
     parser.add_argument('-f', "--filtered_author", type=str, required=True)
+    parser.add_argument('-a', "--ascending", type=int, default=0)
 
     args = parser.parse_args()
 
@@ -54,20 +55,19 @@ if __name__ == '__main__':
     for row_idx in range(filter_a2a_mat.shape[0]):
         # Create a masked array to ignore the diagonal element
         row_data = filter_a2a_mat[row_idx].copy()
-        row_data[row_idx] = numpy.inf  # Mask diagonal value
+        row_data[row_idx] = numpy.inf if args.ascending == 0 else -1  # Mask diagonal value
         
         # Find the minimum value and its position
-        min_val = numpy.min(row_data)
-        min_col = numpy.argmin(row_data)
+        # target_val = numpy.min(row_data) if args.ascending == 0 else numpy.max(row_data)
+        target_col = numpy.argmin(row_data) if args.ascending == 0 else numpy.argmax(row_data)
         
         # Get the cell and highlight it
-        cell = table.get_celld().get((row_idx + 1, min_col))  # +1 for header offset
+        cell = table.get_celld().get((row_idx + 1, target_col))  # +1 for header offset
         if cell is not None:
             cell.set_text_props(
                 fontproperties=FontProperties(weight='bold'),
                 color='red'
             )
-            # cell._text.set_text(f'{min_val:.4f}') 
 
     table.auto_set_font_size(False)
     table.set_fontsize(11)

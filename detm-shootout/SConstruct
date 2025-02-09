@@ -14,6 +14,8 @@ vars.AddVariables(
     ("TOP_NEIGHBORS", "", 15),
     ("TOP_TOPIC_WORDS", "", 5),
     ("TOPIC_COUNT", "", 50),
+    ("TOPIC_COUNTS", "", [2, 5, 10, 20, 40, 80, 160]),
+    ("NUM_WINDOWS", "", [2, 4, 8, 16, 32]),
     ("MAX_EPOCHS", "", 200),
     ("CUDA_DEVICE", "", "cpu"),
     ("BATCH_SIZE", "", 512),
@@ -84,7 +86,7 @@ for study in env["STUDIES"]:
     word_similarity_table = "work/${NAME}/word_similarity.tex"
     # env.GenerateWordSimilarityTable(word_similarity_table, embeddings, TOP_NEIGHBORS=5,)
 
-    topic_model = "work/${NAME}/${MODEL_TYPE}_model.bin.gz"
+    topic_model = "work/${NAME}/${MODEL_TYPE}_win_${NUM_WINDOW}_top_${TOPIC_COUNT}.bin.gz"
     env.TrainModel(topic_model, [train_val_data, embeddings])
 
     perplexity = "work/${NAME}/${MODEL_TYPE}_perplexity.jsonl.gz"

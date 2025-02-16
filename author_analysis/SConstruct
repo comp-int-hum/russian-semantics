@@ -1,11 +1,15 @@
 import os.path
-from steamroller import Environment
+from steamroller import Environment, Variables, Builder
 from SCons.Environment import OverrideEnvironment
 
 vars = Variables("custom.py")
 vars.AddVariables(
     ("MATRICE_DATA", "", []),
-    ("GLOBAL_DATA_DIR", "", "/home/zxia15/data_zxia15/russian-semantics/detm-shootout/work/russian"),
+    (
+        "GLOBAL_DATA_DIR",
+        "",
+        "/home/zxia15/data_zxia15/russian-semantics/detm-shootout/work/russian",
+    ),
     ("MATRIX_DIR", "", ""),
     ("EMBEDDING_DIR", "", "embeddings.bin.gz"),
     ("MODEL_DIR", "", "xDETM_win_16_top_20.bin.gz"),
@@ -17,7 +21,6 @@ vars.AddVariables(
     ("PER_VOCAB_TOPIC_DATA_ROOT", "", ""),
     ("PER_AUTH_PER_TOP_EMBED_ROOT", "", ""),
     ("AUTH_VOC_WIN_TOP_ONE_HOT_ROOT", "", ""),
-
     # auth data
     ("CONTENT_FIELD", "", "text"),
     ("TIME_FIELD", "", "written_year"),
@@ -25,45 +28,36 @@ vars.AddVariables(
     ("TITLE_FIELD", "", "title"),
     ("BATCH_SIZE", "", 2048),
     ("AUTH_DATA_DIR", "", "auth_data.jsonl.gz"),
-
     # id2author
     ("ID2AUTH", "", "id2author.json"),
     ("ID2AUTH_INTEREST", "", "filtered_id2author.json"),
-
-    #id2word
+    # id2word
     ("ID2WORD", "", "id2word.json"),
-
     # author vocab embeddings
     ("AUTH_VOCAB_EMBEDS", "", "auth_vocab_embeds.csv"),
     ("AUTH_VOCAB_EMBEDS_COSSIM", "", "auth_vocab_embeds_cos.csv"),
     ("AUTH_VOCAB_EMBEDS_EUCDIS", "", "auth_vocab_embeds_euc.csv"),
-
     # vocab topic embeddings
     ("VOCAB_TOPIC_COUNTS", "", "vocab_topic_counts.csv"),
-
     # autor topic embeddings
     ("AUTH_TOPIC_DIST", "", "auth_topic_dist.csv"),
     ("AUTH_TOPIC_DIST_JSDIV", "", "auth_topic_js.csv"),
     ("AUTH_TOPIC_COS", "", "auth_topic_cos.csv"),
-
     # steps on the way
     ("PRELOAD_DATA", "", True),
     ("PRELOAD_VOCAB_TOPIC", "", True),
     ("GET_PER_AUTH_TOPIC_EMBED", "", False),
     ("GET_PER_SINGLE_TOPIC_VOCAB_EMBED", "", False),
     ("GET_AUTH_VOC_WIN_TOP_ONE_HOT", "", False),
-
     # order by auth info
-    ("AUTHORS_WINDOWS_TOPICS", "", "auth_win_top"), # author_window_time
+    ("AUTHORS_WINDOWS_TOPICS", "", "auth_win_top"),  # author_window_time
     ("AUTHOR_COUNTER_DIR", "", "author_vocab_counter.jsonl.gz"),
     ("AUTHOR_EMBED_DIR", "", "author_embeddings.jsonl.gz"),
     ("EMBED_AUTHOR_FIELD", "", "author"),
-
     # generate auth2auth image info
     ("TABULAR_AUTH", "", []),
     ("JS_IMAGE_DIR", "", "images/author_topic_dist_js.png"),
     ("COS_IMAGE_DIR", "", "images/author_topic_dist_cos.png"),
-
     # generate auth2auth cluster info
     ("CLUSTER_AUTH", "", []),
     ("TOPIC_INVESTIGATION_LIST", "", []),
@@ -71,7 +65,6 @@ vars.AddVariables(
     ("JS_CLUSTER_DATA_DIR_ALL", "", "author_topic_dist_cluster_all.txt"),
     ("JS_CLUSTER_IMAGE_DIR_ALL", "", "images/author_topic_dist_cluster_filter.png"),
     ("JS_CLUSTER_DATA_DIR_ALL", "", "author_topic_dist_cluster_filter.txt"),
-
     ("ASCENDING", "", 0),
 )
 
@@ -79,72 +72,95 @@ env = Environment(
     variables=vars,
     BUILDERS={
         # first function to annotate all important information
-        "GenerateAuthData" : Builder(
-            action=("python scripts/generate_auth_data.py --model_dir ${SOURCES[0]} --train_val_data_dir ${SOURCES[1]} --test_data_dir ${SOURCES[2]} --embedding_dir ${SOURCES[3]} --output_dir ${TARGETS[0]} " + 
-            "--content_field ${CONTENT_FIELD} --time_field ${TIME_FIELD} --author_field ${AUTHOR_FIELD} --title_field ${TITLE_FIELD} --batch_size ${BATCH_SIZE}"),
+        "GenerateAuthData": Builder(
+            action=(
+                "python scripts/generate_auth_data.py --model_dir ${SOURCES[0]} --train_val_data_dir ${SOURCES[1]} --test_data_dir ${SOURCES[2]} --embedding_dir ${SOURCES[3]} --output_dir ${TARGETS[0]} "
+                + "--content_field ${CONTENT_FIELD} --time_field ${TIME_FIELD} --author_field ${AUTHOR_FIELD} --title_field ${TITLE_FIELD} --batch_size ${BATCH_SIZE}"
+            ),
         ),
-        "OrderByAuth" : Builder(
-            action=("python scripts/order_by_auth.py --input_dir ${SOURCES[0]}${' --id2auth_dir ' + SOURCES[1].rstr() if len(SOURCES) == 2 else ''} " + 
-                    "--output_dir ${TARGETS[0]}${' --id2auth_output_dir ' + TARGETS[1].rstr() if len(TARGETS) == 2 else ''} --embed_size ${EMBED_SIZE} " +
-                    "--author_field ${AUTHOR_FIELD} --embedding_field ${EMBEDDING_FIELD}")
+        "OrderByAuth": Builder(
+            action=(
+                "python scripts/order_by_auth.py --input_dir ${SOURCES[0]}${' --id2auth_dir ' + SOURCES[1].rstr() if len(SOURCES) == 2 else ''} "
+                + "--output_dir ${TARGETS[0]}${' --id2auth_output_dir ' + TARGETS[1].rstr() if len(TARGETS) == 2 else ''} --embed_size ${EMBED_SIZE} "
+                + "--author_field ${AUTHOR_FIELD} --embedding_field ${EMBEDDING_FIELD}"
+            )
         ),
-        "GetAuth2Auth" : Builder(
-            action=("python scripts/get_auth2auth_matrix.py --input_dir ${SOURCES[0]} --output_dir ${TARGETS[0]} --mode ${MODE}")
+        "GetAuth2Auth": Builder(
+            action=(
+                "python scripts/get_auth2auth_matrix.py --input_dir ${SOURCES[0]} --output_dir ${TARGETS[0]} --mode ${MODE}"
+            )
         ),
         "GenerateAuth2AuthImg": Builder(
-            action=("python scripts/generate_auth2auth_img.py --input_dir ${SOURCES[0]} --id2auth ${SOURCES[1]} --output_dir ${TARGETS[0]} --filtered_author \"${AUTH_ARR}\"  --ascending ${ASCENDING}")
+            action=(
+                'python scripts/generate_auth2auth_img.py --input_dir ${SOURCES[0]} --id2auth ${SOURCES[1]} --output_dir ${TARGETS[0]} --filtered_author "${AUTH_ARR}"  --ascending ${ASCENDING}'
+            )
         ),
         "GenerateAuth2AuthCluster": Builder(
-            action=("python scripts/generate_auth2auth_cluster.py --input_dir ${SOURCES[0]} --id2auth ${SOURCES[1]} --data_root ${DATA_ROOT} --output_dir ${TARGETS[0]} --which_to_fit ${WHICH_TO_FIT} --filter_auth \"${AUTH_ARR}\"")
+            action=(
+                'python scripts/generate_auth2auth_cluster.py --input_dir ${SOURCES[0]} --id2auth ${SOURCES[1]} --data_root ${DATA_ROOT} --output_dir ${TARGETS[0]} --which_to_fit ${WHICH_TO_FIT} --filter_auth "${AUTH_ARR}"'
+            )
         ),
-
         # prepare vocab embeds
-        "GenerateVocabData" : Builder(
-            action=("python scripts/generate_vocab_data.py --input_dir ${SOURCES[0]} --model_dir ${SOURCES[1]} --output_dir ${TARGETS[0]} " + 
-            "--vocab_field ${VOCAB_FIELD} --vocab2id_field ${VOCAB2ID_FIELD} --embed_size ${EMBED_SIZE}")
+        "GenerateVocabData": Builder(
+            action=(
+                "python scripts/generate_vocab_data.py --input_dir ${SOURCES[0]} --model_dir ${SOURCES[1]} --output_dir ${TARGETS[0]} "
+                + "--vocab_field ${VOCAB_FIELD} --vocab2id_field ${VOCAB2ID_FIELD} --embed_size ${EMBED_SIZE}"
+            )
         ),
         "VisVocabDist": Builder(
             action="python scripts/visualize_vocab_distribution.py --input_dir ${SOURCES[0]} --model_dir ${SOURCES[1]} --output_dir ${TARGETS[0]}"
         ),
-
         "GeneratePerTopicVocabEmbed": Builder(
             action="python scripts/generate_per_topic_vocab_embed.py --input_dir ${SOURCES[0]} --id2auth_dir ${SOURCES[1]} --embedding_dir ${SOURCES[2]}  --output_dir ${TARGETS[0]} --topic_spec ${TOPIC_NUM} --embed_field ${EMBED_FIELD} --word2id_field ${WORD2ID_FIELD}"
         ),
         "GeneratePerTopicAuthTopVocab": Builder(
-            action="python scripts/generate_auth_top_vocab_per_topic.py --input_dir ${SOURCES[0]} --output_dir ${TARGETS[0]} --topic_spec ${TOPIC_NUM} --filtered_author \"${AUTH_ARR}\" --author_field ${AUTHOR_FIELD} --embed_field ${EMBED_FIELD} --word2id_field ${WORD2ID_FIELD}"
+            action='python scripts/generate_auth_top_vocab_per_topic.py --input_dir ${SOURCES[0]} --output_dir ${TARGETS[0]} --topic_spec ${TOPIC_NUM} --filtered_author "${AUTH_ARR}" --author_field ${AUTHOR_FIELD} --embed_field ${EMBED_FIELD} --word2id_field ${WORD2ID_FIELD}'
         ),
         "GenerateAuthorVocabOneHot": Builder(
             action="python scripts/generate_author_vocab_onehot.py --input_dir ${SOURCES[0]} --model_dir ${SOURCES[1]} --auth_output_dir ${TARGETS[0]} --topic_output_dir ${TARGETS[1]} --embed_field ${EMBED_FIELD}"
         ),
         "GetAuth2CentroidMatrix": Builder(
             action="python scripts/get_auth2centroid_matrix.py --input_auth_dir ${SOURCES[0]} --input_centroid_dir ${SOURCES[1]} --output_dir ${TARGETS[0]}"
-        )
-    }
+        ),
+        "FindDeviation": Builder(
+            action="python scripts/find_deviation.py --input_dir ${SOURCES[0]} --id2auth_dir ${SOURCES[1]} --output_dir ${TARGETS[0]}"
+        ),
+        "VisualizeDeviation": Builder(
+            action="python scripts/visualize_deviation.py --input_dir ${SOURCES[0]} --id2auth_dir ${SOURCES[1]} --output_dir ${TARGETS[0]}"
+        ),
+    },
 )
 
-model_dir = '${GLOBAL_DATA_DIR}/${MODEL_DIR}'
-train_val_data_dir = '${GLOBAL_DATA_DIR}/${TRAIN_VAL_DATA_DIR}'
-test_data_dir = '${GLOBAL_DATA_DIR}/${TEST_DATA_DIR}'
-embedding_dir = '${GLOBAL_DATA_DIR}/${EMBEDDING_DIR}'
-auth_data_dir = '${DATA_ROOT}/${AUTH_FULL_DATA_ROOT}/${AUTH_DATA_DIR}'
+model_dir = "${GLOBAL_DATA_DIR}/${MODEL_DIR}"
+train_val_data_dir = "${GLOBAL_DATA_DIR}/${TRAIN_VAL_DATA_DIR}"
+test_data_dir = "${GLOBAL_DATA_DIR}/${TEST_DATA_DIR}"
+embedding_dir = "${GLOBAL_DATA_DIR}/${EMBEDDING_DIR}"
+auth_data_dir = "${DATA_ROOT}/${AUTH_FULL_DATA_ROOT}/${AUTH_DATA_DIR}"
 
-if not env['PRELOAD_DATA']:
-    env.GenerateAuthData([auth_data_dir], [model_dir, train_val_data_dir, test_data_dir, embedding_dir])
+if not env["PRELOAD_DATA"]:
+    env.GenerateAuthData(
+        [auth_data_dir], [model_dir, train_val_data_dir, test_data_dir, embedding_dir]
+    )
 
 id2auth_dir = "${DATA_ROOT}/${AUTH_FULL_DATA_ROOT}/${ID2AUTH}"
 
-if env['GET_PER_AUTH_TOPIC_EMBED']:
+if env["GET_PER_AUTH_TOPIC_EMBED"]:
     auth_topic_emb = "${DATA_ROOT}/${PER_AUTH_TOPIC_EMBED_ROOT}/${AUTH_TOPIC_DIST}"
-    env.OrderByAuth([auth_topic_emb, id2auth_dir], [auth_data_dir], EMBED_SIZE=20, 
-                    AUTHOR_FIELD = 'auth_name', EMBEDDING_FIELD='annotate_by_work')
+    env.OrderByAuth(
+        [auth_topic_emb, id2auth_dir],
+        [auth_data_dir],
+        EMBED_SIZE=20,
+        AUTHOR_FIELD="auth_name",
+        EMBEDDING_FIELD="annotate_by_work",
+    )
 
-    auth_topic_js = '${DATA_ROOT}/${PER_AUTH_TOPIC_EMBED_ROOT}/${AUTH_TOPIC_DIST_JSDIV}'
+    auth_topic_js = "${DATA_ROOT}/${PER_AUTH_TOPIC_EMBED_ROOT}/${AUTH_TOPIC_DIST_JSDIV}"
     # env.GetAuth2Auth([auth_topic_js], [auth_topic_emb], MODE='js')
 
-    js_vis_dir = '${DATA_ROOT}/${PER_AUTH_TOPIC_EMBED_ROOT}/${JS_IMAGE_DIR}'
+    js_vis_dir = "${DATA_ROOT}/${PER_AUTH_TOPIC_EMBED_ROOT}/${JS_IMAGE_DIR}"
     # env.GenerateAuth2AuthImg([js_vis_dir], [auth_topic_js, id2auth_dir], AUTH_ARR = ';'.join(env['TABULAR_AUTH']))
 
-    # env.GenerateAuth2AuthCluster(['${DATA_ROOT}/${PER_AUTH_TOPIC_EMBED_ROOT}/generate_auth2auth_cluster_all.txt'], 
+    # env.GenerateAuth2AuthCluster(['${DATA_ROOT}/${PER_AUTH_TOPIC_EMBED_ROOT}/generate_auth2auth_cluster_all.txt'],
     #                     [auth_topic_emb, id2auth_dir],
     #                     AUTH_ARR = ';'.join(env['CLUSTER_AUTH']), WHICH_TO_FIT = 'all')
 
@@ -154,48 +170,69 @@ if env['GET_PER_AUTH_TOPIC_EMBED']:
 
 vocab_topic_counts = "${DATA_ROOT}/${PER_VOCAB_TOPIC_DATA_ROOT}/${VOCAB_TOPIC_COUNTS}"
 
-if not env['PRELOAD_VOCAB_TOPIC']:
-    env.GenerateVocabData([vocab_topic_counts], [auth_data_dir, model_dir], VOCAB_FIELD='annotate_by_vocab', VOCAB2ID_FIELD='vocab2idx', EMBED_SIZE=20)
-
-    img_dir = '${DATA_ROOT}/${PER_VOCAB_TOPIC_DATA_ROOT}/images/Topic_Top_Vocab_[num].png'
-    env.VisVocabDist([img_dir], [vocab_topic_counts, model_dir])
-
-if env['GET_AUTH_VOC_WIN_TOP_ONE_HOT']:
-    auth_topic_vocab_onehot = "${DATA_ROOT}/${AUTH_VOC_WIN_TOP_ONE_HOT_ROOT}/auth_mat.csv"
-    topic_vocab_onehot = "${DATA_ROOT}/${AUTH_VOC_WIN_TOP_ONE_HOT_ROOT}/topic_mat.csv"
-    env.GenerateAuthorVocabOneHot(
-        [auth_topic_vocab_onehot, topic_vocab_onehot],
+if not env["PRELOAD_VOCAB_TOPIC"]:
+    env.GenerateVocabData(
+        [vocab_topic_counts],
         [auth_data_dir, model_dir],
-        EMBED_FIELD='annotate_by_vocab'
-        )
-
-    auth2centroid_mat = "${DATA_ROOT}/${AUTH_VOC_WIN_TOP_ONE_HOT_ROOT}/auth2centroid.csv"
-    env.GetAuth2CentroidMatrix(
-        [auth2centroid_mat],
-        [auth_topic_vocab_onehot, topic_vocab_onehot]
+        VOCAB_FIELD="annotate_by_vocab",
+        VOCAB2ID_FIELD="vocab2idx",
+        EMBED_SIZE=20,
     )
 
-if env['GET_PER_SINGLE_TOPIC_VOCAB_EMBED']:
-    for topic_instance in env['TOPIC_INVESTIGATION_LIST'][0:1]:
+    img_dir = (
+        "${DATA_ROOT}/${PER_VOCAB_TOPIC_DATA_ROOT}/images/Topic_Top_Vocab_[num].png"
+    )
+    env.VisVocabDist([img_dir], [vocab_topic_counts, model_dir])
+
+if env["GET_AUTH_VOC_WIN_TOP_ONE_HOT"]:
+    auth_topic_vocab_onehot = (
+        "${DATA_ROOT}/${AUTH_VOC_WIN_TOP_ONE_HOT_ROOT}/auth_mat.csv"
+    )
+    topic_vocab_onehot = "${DATA_ROOT}/${AUTH_VOC_WIN_TOP_ONE_HOT_ROOT}/topic_mat.csv"
+    # env.GenerateAuthorVocabOneHot(
+    #     [auth_topic_vocab_onehot, topic_vocab_onehot],
+    #     [auth_data_dir, model_dir],
+    #     EMBED_FIELD="annotate_by_vocab",
+    # )
+
+    auth2centroid_mat = (
+        "${DATA_ROOT}/${AUTH_VOC_WIN_TOP_ONE_HOT_ROOT}/auth2centroid.npy"
+    )
+    env.GetAuth2CentroidMatrix(
+        [auth2centroid_mat], [auth_topic_vocab_onehot, topic_vocab_onehot]
+    )
+
+    deviation_dir = "${DATA_ROOT}/${AUTH_VOC_WIN_TOP_ONE_HOT_ROOT}/deviation.json"
+    env.VisualizeDeviation([deviation_dir], [auth2centroid_mat, id2auth_dir])
+
+if env["GET_PER_SINGLE_TOPIC_VOCAB_EMBED"]:
+    for topic_instance in env["TOPIC_INVESTIGATION_LIST"][0:1]:
         env = OverrideEnvironment(env, topic_instance)
 
         topic_vocab_embed = "${DATA_ROOT}/${PER_AUTH_PER_TOP_EMBED_ROOT}/${TOPIC_FOLDER}/vocab_embed.csv"
         env.GeneratePerTopicVocabEmbed(
-               [topic_vocab_embed],
-               [auth_data_dir, id2auth_dir, embedding_dir],
-               EMBED_FIELD='annotate_by_vocab',
-               WORD2ID_FIELD='vocab2idx'
+            [topic_vocab_embed],
+            [auth_data_dir, id2auth_dir, embedding_dir],
+            EMBED_FIELD="annotate_by_vocab",
+            WORD2ID_FIELD="vocab2idx",
         )
 
-        auth_vocab_cos = '${DATA_ROOT}/${PER_AUTH_PER_TOP_EMBED_ROOT}/${TOPIC_FOLDER}/${AUTH_TOPIC_COS}'
-        env.GetAuth2Auth([auth_vocab_cos], [topic_vocab_embed], MODE='cos')
+        auth_vocab_cos = "${DATA_ROOT}/${PER_AUTH_PER_TOP_EMBED_ROOT}/${TOPIC_FOLDER}/${AUTH_TOPIC_COS}"
+        env.GetAuth2Auth([auth_vocab_cos], [topic_vocab_embed], MODE="cos")
 
-        cos_vis_dir = '${DATA_ROOT}/${PER_AUTH_PER_TOP_EMBED_ROOT}/${TOPIC_FOLDER}/${COS_IMAGE_DIR}'
-        env.GenerateAuth2AuthImg([cos_vis_dir], [auth_vocab_cos, id2auth_dir], 
-                                AUTH_ARR = ';'.join(env['TABULAR_AUTH']),
-                                ASCENDING=1,
-                                )
-        img_dir = '${DATA_ROOT}/${PER_AUTH_PER_TOP_EMBED_ROOT}/${TOPIC_FOLDER}/images/author_top_vocab.png'
-        env.GeneratePerTopicAuthTopVocab([img_dir], [auth_data_dir], 
-                                        AUTH_ARR = ';'.join(env['TABULAR_AUTH']), EMBED_FIELD='annotate_by_vocab', 
-                                        AUTHOR_FIELD = 'auth_name', WORD2ID_FIELD='vocab2idx')
+        cos_vis_dir = "${DATA_ROOT}/${PER_AUTH_PER_TOP_EMBED_ROOT}/${TOPIC_FOLDER}/${COS_IMAGE_DIR}"
+        env.GenerateAuth2AuthImg(
+            [cos_vis_dir],
+            [auth_vocab_cos, id2auth_dir],
+            AUTH_ARR=";".join(env["TABULAR_AUTH"]),
+            ASCENDING=1,
+        )
+        img_dir = "${DATA_ROOT}/${PER_AUTH_PER_TOP_EMBED_ROOT}/${TOPIC_FOLDER}/images/author_top_vocab.png"
+        env.GeneratePerTopicAuthTopVocab(
+            [img_dir],
+            [auth_data_dir],
+            AUTH_ARR=";".join(env["TABULAR_AUTH"]),
+            EMBED_FIELD="annotate_by_vocab",
+            AUTHOR_FIELD="auth_name",
+            WORD2ID_FIELD="vocab2idx",
+        )
